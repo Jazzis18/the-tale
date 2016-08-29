@@ -9,9 +9,12 @@ from the_tale.game import names
 from the_tale.game.logic import create_test_map
 
 from the_tale.game.mobs.prototypes import MobPrototype
+from the_tale.game import relations as game_relations
 
-from the_tale.game.heroes.prototypes import HeroPrototype
 from the_tale.game.heroes.habilities import attributes
+
+from .. import logic
+
 
 class AttributeAbiliesForHeroTest(testcase.TestCase):
 
@@ -19,8 +22,8 @@ class AttributeAbiliesForHeroTest(testcase.TestCase):
         super(AttributeAbiliesForHeroTest, self).setUp()
         create_test_map()
 
-        result, account_id, bundle_id = register_user('test_user')
-        self.hero = HeroPrototype.get_by_account_id(account_id)
+        account = self.accounts_factory.create_account()
+        self.hero = logic.load_hero(account_id=account.id)
 
     def tearDown(self):
         pass
@@ -93,7 +96,7 @@ class AttributeAbiliesForMobTest(testcase.TestCase):
     @staticmethod
     def construct_mob_with_abilities(abilities, index):
         from the_tale.game.mobs.prototypes import MobRecordPrototype
-        from the_tale.game.mobs.relations import MOB_RECORD_STATE, MOB_TYPE
+        from the_tale.game.mobs.relations import MOB_RECORD_STATE
 
         uuid = 'test_mob %d' % index
         mob_record =  MobRecordPrototype.create(uuid,
@@ -102,7 +105,7 @@ class AttributeAbiliesForMobTest(testcase.TestCase):
                                                 description='',
                                                 abilities=abilities,
                                                 terrains=[],
-                                                type=MOB_TYPE.CIVILIZED,
+                                                type=game_relations.BEING_TYPE.CIVILIZED,
                                                 state=MOB_RECORD_STATE.ENABLED)
         return MobPrototype(level=1, record_id=mob_record.id)
 

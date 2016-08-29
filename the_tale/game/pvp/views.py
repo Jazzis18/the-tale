@@ -8,7 +8,7 @@ from the_tale.amqp_environment import environment
 
 from the_tale.common.utils.decorators import login_required, lazy_property
 from the_tale.common.utils.resources import Resource
-from the_tale.common.postponed_tasks import PostponedTaskPrototype
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.views import validate_fast_account
@@ -16,9 +16,8 @@ from the_tale.accounts.clans.prototypes import ClanPrototype
 
 from the_tale.game.conf import game_settings
 
-from the_tale.game.heroes.prototypes import HeroPrototype
-from the_tale.game.heroes.models import Hero
 from the_tale.game.heroes.relations import EQUIPMENT_SLOT
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.game.pvp.prototypes import Battle1x1Prototype
 from the_tale.game.pvp.forms import SayForm
@@ -26,6 +25,8 @@ from the_tale.game.pvp.postponed_tasks import SayInBattleLogTask, UsePvPAbilityT
 from the_tale.game.pvp.models import Battle1x1, BATTLE_1X1_STATE
 from the_tale.game.pvp.conf import pvp_settings
 from the_tale.game.pvp.abilities import ABILITIES, Ice, Blood, Flame
+
+from the_tale.game.abilities.relations import ABILITY_TYPE
 
 def accept_call_valid_levels(hero_level):
     return (max(0, hero_level - pvp_settings.BALANCING_MIN_LEVEL_DELTA),
@@ -35,7 +36,7 @@ def accept_call_valid_levels(hero_level):
 class PvPResource(Resource):
 
     @lazy_property
-    def own_hero(self): return HeroPrototype.get_by_account_id(self.account.id) if self.account.is_authenticated() else None
+    def own_hero(self): return heroes_logic.load_hero(account_id=self.account.id) if self.account.is_authenticated() else None
 
     @validator(code='pvp.no_rights', message=u'Вы не можете участвовать в PvP')
     def validate_participation_right(self, *args, **kwargs): return self.can_participate
@@ -62,7 +63,7 @@ class PvPResource(Resource):
 
         enemy_account = AccountPrototype.get_by_id(battle.enemy_id)
 
-        enemy_hero = HeroPrototype.get_by_account_id(battle.enemy_id)
+        enemy_hero = heroes_logic.load_hero(account_id=battle.enemy_id)
         enemy_abilities = sorted(enemy_hero.abilities.all, key=lambda x: x.NAME)
 
         say_form = SayForm()
@@ -138,7 +139,7 @@ class PvPResource(Resource):
             accounts_ids.append(battle.account_id)
             accounts_ids.append(battle.enemy_id)
 
-        heroes = [HeroPrototype(model=hero_model) for hero_model in Hero.objects.filter(account_id__in=accounts_ids)]
+        heroes = heroes_logic.load_heroes_by_account_ids(accounts_ids)
         heroes = dict( (hero.account_id, hero) for hero in heroes)
 
         ACCEPTED_LEVEL_MIN, ACCEPTED_LEVEL_MAX = None, None
@@ -151,7 +152,8 @@ class PvPResource(Resource):
                               'heroes': heroes,
                               'own_hero': self.own_hero,
                               'ACCEPTED_LEVEL_MAX': ACCEPTED_LEVEL_MAX,
-                              'ACCEPTED_LEVEL_MIN': ACCEPTED_LEVEL_MIN  })
+                              'ACCEPTED_LEVEL_MIN': ACCEPTED_LEVEL_MIN,
+                              'ABILITY_TYPE': ABILITY_TYPE})
 
     @login_required
     @validate_fast_account()

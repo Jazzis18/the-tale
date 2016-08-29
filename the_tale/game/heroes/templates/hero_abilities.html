@@ -76,7 +76,7 @@ jQuery(document).ready(function(e){
   <div id="choose-ability-button" class="alert alert-success fade in pgf-choose-ability-button pgf-free-destiny-points pgf-hidden">
     {{ resource.hero.name }} может выучить новую способность. <br/>
     Нажмите на это сообщение, чтобы выбрать её.<br/>
-    Доступно способностей: {{resource.hero.abilities.destiny_points_remained}}
+    Доступно способностей: {{resource.hero.abilities.destiny_points}}
   </div>
 
   <div class="alert alert-info fade in pgf-choose-ability-button pgf-no-destiny-points">
@@ -94,14 +94,14 @@ jQuery(document).ready(function(e){
       {%- endif -%}
       .
     {% else %}
-      {{ resource.hero.name }} достиг вершины геройского мастерства.
+      {{ resource.hero.name }} находится на вершине геройского мастерства.
     {% endif %}
   </div>
 
   {% endif %}
 
   <table class="table table-condensed table-highlighting" style="cursor: default;">
-    <caption style="text-align: left;"><h4>Боевые</h4></caption>
+    <caption style="text-align: left;"><h3>Боевые</h3></caption>
     <tbody>
       {% for ability in battle_active_abilities %}
         {{macros.ability_record(ability)}}
@@ -121,7 +121,7 @@ jQuery(document).ready(function(e){
   </table>
 
   <table class="table table-condensed table-highlighting" style="cursor: default;">
-    <caption style="text-align: left;"><h4>Мирные</h4></caption>
+    <caption style="text-align: left;"><h3>Мирные</h3></caption>
     <tbody>
       {% for ability in nonbattle_abilities %}
         {{macros.ability_record(ability)}}
@@ -134,7 +134,7 @@ jQuery(document).ready(function(e){
   </table>
 
   <table class="table table-condensed table-highlighting" style="cursor: default;">
-    <caption style="text-align: left;"><h4>Для спутников</h4></caption>
+    <caption style="text-align: left;"><h3>Для спутников</h3></caption>
     <tbody>
       {% for ability in companion_abilities %}
         {{macros.ability_record(ability)}}

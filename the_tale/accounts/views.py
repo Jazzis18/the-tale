@@ -1,8 +1,9 @@
 # coding: utf-8
+import logging
 import uuid
 
 from django.core.urlresolvers import reverse
-from django.utils.log import getLogger
+
 
 from dext.common.utils import views as dext_views
 from dext.common.utils import exceptions as dext_exceptions
@@ -13,14 +14,14 @@ from the_tale.common.utils import views as utils_views
 
 from the_tale.amqp_environment import environment
 
-from the_tale.common.postponed_tasks import PostponedTaskPrototype
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 from the_tale.common.utils.resources import Resource
 from the_tale.common.utils.pagination import Paginator
 from the_tale.common.utils.decorators import login_required
 from the_tale.common.utils import api
 
 from the_tale.game.heroes.models import Hero
-from the_tale.game.heroes.prototypes import HeroPrototype
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.accounts.friends.prototypes import FriendshipPrototype
 from the_tale.accounts.personal_messages.prototypes import MessagePrototype
@@ -181,7 +182,7 @@ def index(context):
     accounts_ids = [ model.id for model in accounts_models]
     clans_ids = [ model.clan_id for model in accounts_models]
 
-    heroes = dict( (model.account_id, HeroPrototype(model=model)) for model in Hero.objects.filter(account_id__in=accounts_ids))
+    heroes = dict( (model.account_id, heroes_logic.load_hero(hero_model=model)) for model in Hero.objects.filter(account_id__in=accounts_ids))
 
     clans = {clan.id:clan for clan in ClanPrototype.get_list_by_id(clans_ids)}
 
@@ -202,7 +203,7 @@ def show(context):
 
     friendship = FriendshipPrototype.get_for_bidirectional(context.account, context.master_account)
 
-    master_hero = HeroPrototype.get_by_account_id(context.master_account.id)
+    master_hero = heroes_logic.load_hero(account_id=context.master_account.id)
 
     return dext_views.Page('accounts/show.html',
                            content={'master_hero': master_hero,
@@ -232,37 +233,37 @@ def api_show(context):
 
 формат данных в ответе:
 
-{
-  "id": <целое число>,           // идентификатор игрока
-  "registered": true|false,      // маркер завершения регистрации
-  "name": "строка",              // имя игрока
-  "hero_id": <целое число>,      // идентификатор героя
-  "places_history": [            // список истории помощи городам
-    "place": {                   // город
-      "id": <целое число>,       // идентификатор города
-      "name": "строка"           // название города
-    },
-    "count": <целое число>       // количество фактов помощи
-  ],
-  "might": <дробное число>,      // могущество
-  "achievements": <целое число>, // очки достижений
-  "collections": <целое число>,  // количество предметов в коллекции
-  "referrals": <целое число>,    // количество последователей (рефералов)
-  "ratings": {                                // рейтинги
-    "строка": {                               // идентификатор рейтинга:
-      "name": "строка",                       // название рейтинга: иинформация о рейтинге
-      "place": <целое число>,                 // место
-      "value": <целое число>|<дробное число>  // величина рейтингового значения
+    {
+      "id": <целое число>,           // идентификатор игрока
+      "registered": true|false,      // маркер завершения регистрации
+      "name": "строка",              // имя игрока
+      "hero_id": <целое число>,      // идентификатор героя
+      "places_history": [            // список истории помощи городам
+        "place": {                   // город
+          "id": <целое число>,       // идентификатор города
+          "name": "строка"           // название города
+        },
+        "count": <целое число>       // количество фактов помощи
+      ],
+      "might": <дробное число>,      // могущество
+      "achievements": <целое число>, // очки достижений
+      "collections": <целое число>,  // количество предметов в коллекции
+      "referrals": <целое число>,    // количество последователей (рефералов)
+      "ratings": {                                // рейтинги
+        "строка": {                               // идентификатор рейтинга:
+          "name": "строка",                       // название рейтинга: иинформация о рейтинге
+          "place": <целое число>,                 // место
+          "value": <целое число>|<дробное число>  // величина рейтингового значения
+        }
+      },
+      "permissions": {                // права на выполнение различных операций
+        "can_affect_game": true|false // оказывает ли влияние на игру
+      },
+      "description": "строка"         // описание игока, введённое им сами (в формате html)
     }
-  },
-  "permissions": {                // права на выполнение различных операций
-    "can_affect_game": true|false // оказывает ли влияние на игру
-  },
-  "description": "строка"         // описание игока, введённое им сами (в формате html)
-}
     '''
 
-    master_hero = HeroPrototype.get_by_account_id(context.master_account.id)
+    master_hero = heroes_logic.load_hero(account_id=context.master_account.id)
 
     return dext_views.AjaxOk(content=logic.get_account_info(context.master_account, master_hero))
 
@@ -335,8 +336,8 @@ def ban(context):
 @accounts_resource('#account', 'reset-bans', method='post')
 def reset_bans(context):
 
-    context.master_account.ban_forum(0)
-    context.master_account.ban_game(0)
+    context.master_account.reset_ban_forum()
+    context.master_account.reset_ban_game()
 
     MessagePrototype.create(logic.get_system_user(),
                             context.master_account,
@@ -384,7 +385,7 @@ def transfer_money(context):
 # end of new views
 ###############################
 
-logger = getLogger('django.request')
+logger = logging.getLogger('django.request')
 
 @validator(code='common.fast_account', message=u'Вы не закончили регистрацию и данная функция вам не доступна')
 def validate_fast_account(self, *args, **kwargs): return not self.account.is_fast

@@ -12,13 +12,17 @@ from the_tale.common.utils.resources import Resource
 from the_tale.common.utils.decorators import lazy_property
 
 from the_tale.game import relations as game_relations
+from the_tale.game.jobs import effects as jobs_effects
 
 from the_tale.game.heroes.habilities import ABILITIES, ABILITY_TYPE, ABILITY_ACTIVATION_TYPE, ABILITY_AVAILABILITY
 from the_tale.game.heroes.conf import heroes_settings
 from the_tale.game.heroes.relations import PREFERENCE_TYPE
 
-from the_tale.game.map.places.conf import places_settings
+from the_tale.game.places import conf as places_conf
+from the_tale.game.places import logic as places_logic
 from the_tale.game.persons import conf as persons_conf
+from the_tale.game.persons import logic as persons_logic
+from the_tale.game.persons import relations as persons_relations
 from the_tale.game.pvp.conf import pvp_settings
 from the_tale.game.pvp import abilities as pvp_abilities
 
@@ -68,7 +72,8 @@ def get_api_methods():
     from the_tale.game.quests.views import QuestsResource
     from the_tale.accounts.third_party.views import TokensResource
     from the_tale.game.cards import views as cards_views
-    from the_tale.game.map.places import views as places_views
+    from the_tale.game.places import views as places_views
+    from the_tale.game.persons import views as persons_views
 
     return [APIReference('portal_info', u'Базовая информация', PortalResource.api_info),
             APIReference('authorization', u'Авторизация в игре', getattr(TokensResource, 'api_request_authorisation')),
@@ -83,7 +88,8 @@ def get_api_methods():
             APIReference('cards_combine', u'Карты: объединить', cards_views.api_combine),
             APIReference('cards_use', u'Карты: использовать', cards_views.api_use),
             APIReference('places_list', u'Города: перечень всех городов', places_views.api_list),
-            APIReference('places_show', u'Города: подробная информация о городе', places_views.api_show)]
+            APIReference('places_show', u'Города: подробная информация о городе', places_views.api_show),
+            APIReference('persons_show', u'Мастера: подробная информация о Мастере', persons_views.api_show)]
 
 
 def get_api_types():
@@ -95,7 +101,8 @@ def get_api_types():
     from the_tale.game.actions.relations import ACTION_TYPE
     from the_tale.game.quests.relations import ACTOR_TYPE
     from the_tale.game.cards.relations import CARD_TYPE, RARITY as CARD_RARITY
-    from the_tale.game.map.places import relations as places_relations
+    from the_tale.game.places import modifiers as places_modifiers
+    from the_tale.game.places import relations as places_relations
     from the_tale.accounts.third_party.relations import AUTHORISATION_STATE
 
 
@@ -109,7 +116,8 @@ def get_api_types():
 
             TypeReference('action_type', u'Герои: тип действия', ACTION_TYPE),
 
-            TypeReference('places_modifiers', u'Города: специализация', places_relations.CITY_MODIFIERS),
+            TypeReference('places_modifiers', u'Города: специализация', places_modifiers.CITY_MODIFIERS),
+            TypeReference('places_attributes', u'Города: аттрибуты', places_relations.ATTRIBUTE),
 
             TypeReference('actor_types', u'Задания: Типы актёров', ACTOR_TYPE),
 
@@ -128,8 +136,10 @@ def get_api_types():
             TypeReference('authorisation_state', u'Прочее: состояние авторизации', AUTHORISATION_STATE),
             TypeReference('game_state', u'Прочее: состояние игры', game_relations.GAME_STATE),
 
-            TypeReference('person_profession', u'Советник: профессия', persons_relations.PERSON_TYPE),
-            TypeReference('person_profession', u'Советник: тип социальной связи', persons_relations.SOCIAL_CONNECTION_TYPE),
+            TypeReference('person_profession', u'Мастер: профессия', persons_relations.PERSON_TYPE),
+            TypeReference('person_social', u'Мастер: тип социальной связи', persons_relations.SOCIAL_CONNECTION_TYPE),
+            TypeReference('person_personality_cosmetic', u'Мастер: косметические особенности характера', persons_relations.PERSONALITY_COSMETIC),
+            TypeReference('person_personality_practival', u'Мастер: практические особенности характера', persons_relations.PERSONALITY_PRACTICAL),
            ]
 
 
@@ -180,21 +190,23 @@ class GuideResource(Resource):
 
     @handler('persons', method='get')
     def persons(self):
-        from the_tale.game.persons.prototypes import MASTERY_VERBOSE
-        from the_tale.game.persons.relations import PERSON_TYPE
         return self.template('guide/persons.html', {'section': 'persons',
                                                     'persons_settings': persons_conf.settings,
-                                                    'MASTERY_LEVELS': [mastery[1] for mastery in MASTERY_VERBOSE],
-                                                    'PERSON_TYPES': sorted(PERSON_TYPE.records, key=lambda r: r.text) })
+                                                    'INNER_CIRCLE_SIZE': persons_logic.PersonPoliticPower.INNER_CIRCLE_SIZE,
+                                                    'JOBS_EFFECTS': jobs_effects.EFFECT,
+                                                    'PERSON_TYPES': sorted(persons_relations.PERSON_TYPE.records, key=lambda r: r.text),
+                                                    'PERSONALITY_COSMETIC': sorted(persons_relations.PERSONALITY_COSMETIC.records, key=lambda r: r.text),
+                                                    'PERSONALITY_PRACTICAL': sorted(persons_relations.PERSONALITY_PRACTICAL.records, key=lambda r: r.text)})
 
     @handler('cities', method='get')
     def cities(self):
-        from the_tale.game.map.places.modifiers import MODIFIERS
-        from the_tale.game.map.places.prototypes import PlaceParametersDescription
+        from the_tale.game.places.modifiers import CITY_MODIFIERS
+        from the_tale.game.places.relations import ATTRIBUTE
         return self.template('guide/cities.html', {'section': 'cities',
-                                                   'places_settings': places_settings,
-                                                   'PlaceParametersDescription': PlaceParametersDescription,
-                                                   'MODIFIERS': sorted(MODIFIERS.values(), key=lambda modifier: modifier.NAME) })
+                                                   'places_settings': places_conf.settings,
+                                                   'INNER_CIRCLE_SIZE': places_logic.PlacePoliticPower.INNER_CIRCLE_SIZE,
+                                                   'ATTRIBUTES': sorted(ATTRIBUTE.records, key=lambda modifier: modifier.text),
+                                                   'MODIFIERS': sorted(CITY_MODIFIERS.records, key=lambda modifier: modifier.text) })
 
     @handler('politics', method='get')
     def politics(self):

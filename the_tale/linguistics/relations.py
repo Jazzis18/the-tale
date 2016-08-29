@@ -8,9 +8,9 @@ from utg import relations as utg_relations
 from the_tale.game import relations as game_relations
 from the_tale.game.actions import relations as actions_relations
 from the_tale.game.artifacts import relations as artifacts_relations
-from the_tale.game.mobs import relations as mobs_relations
 from the_tale.game.persons import relations as persons_relations
-from the_tale.game.map.places import relations as places_relations
+from the_tale.game.places import relations as places_relations
+from the_tale.game.places import modifiers as places_modifiers
 from the_tale.game.map import relations as map_relations
 from the_tale.game.companions import relations as companions_relations
 
@@ -89,12 +89,17 @@ class INDEX_ORDER_BY(DjangoEnum):
                 ('UPDATED_AT', 1, u'по дате') )
 
 
+class WORD_HAS_PLURAL_FORM(DjangoEnum):
+    records = ( ('HAS', 0, u'имеет'),
+                ('HAS_NO', 1, u'не имеет'))
+
+
 class TEMPLATE_RESTRICTION_GROUP(DjangoEnum):
     static_relation = Column(unique=False, single_type=False)
 
     records = ( ('GENDER', 0, u'пол', game_relations.GENDER),
                 ('RACE', 1, u'раса', game_relations.RACE),
-                ('CITY_MODIFIER', 2, u'специализация города', places_relations.CITY_MODIFIERS),
+                ('CITY_MODIFIER', 2, u'специализация города', places_modifiers.CITY_MODIFIERS),
                 ('HABIT_HONOR', 3, u'честь', game_relations.HABIT_HONOR_INTERVAL),
                 ('HABIT_PEACEFULNESS', 4, u'миролюбие', game_relations.HABIT_PEACEFULNESS_INTERVAL),
                 ('PERSON_TYPE', 5, u'профессия', persons_relations.PERSON_TYPE),
@@ -104,19 +109,36 @@ class TEMPLATE_RESTRICTION_GROUP(DjangoEnum):
                 ('ARTIFACT_RARITY', 8, u'редкость артефакта', artifacts_relations.RARITY),
                 ('ARTIFACT_EFFECT', 9, u'эффект артефакта', artifacts_relations.ARTIFACT_EFFECT),
 
-                ('MOB_TYPE', 10, u'тип монстра', mobs_relations.MOB_TYPE),
+                ('MOB_TYPE', 10, u'тип существа', game_relations.BEING_TYPE),
 
                 ('ARTIFACT', 11, u'артефакт', None),
                 ('MOB', 12, u'монстр', None),
                 ('COMPANION', 13, u'спутник', None),
 
-                ('COMPANION_TYPE', 14, u'тип спутника', companions_relations.TYPE),
+                # ('COMPANION_TYPE', 14, u'тип спутника', companions_relations.TYPE),
                 ('COMPANION_DEDICATION', 15, u'тип самоотверженности спутника', companions_relations.DEDICATION),
-                ('COMPANION_RARITY', 16, u'редкость спутника', companions_relations.RARITY),
+                # ('COMPANION_RARITY', 16, u'редкость спутника', companions_relations.RARITY),
 
                 ('ARCHETYPE', 17, u'архетип', game_relations.ARCHETYPE),
                 ('TERRAIN', 18, u'тип местности', map_relations.TERRAIN),
                 ('BUILDING_TYPE', 19, u'тип здания', places_relations.BUILDING_TYPE),
 
                 ('ACTION_TYPE', 20, u'тип действия героя', actions_relations.ACTION_TYPE),
-                 )
+
+                ('META_TERRAIN', 21, u'мета тип местности', map_relations.META_TERRAIN),
+                ('META_HEIGHT', 22, u'мета тип высоты', map_relations.META_HEIGHT),
+                ('META_VEGETATION', 23, u'мета тип растительности', map_relations.META_VEGETATION),
+
+                ('COMMUNICATION_VERBAL', 24, u'вербальная коммуникация', game_relations.COMMUNICATION_VERBAL),
+                ('COMMUNICATION_GESTURES', 25, u'невербальная коммуникация', game_relations.COMMUNICATION_GESTURES),
+                ('COMMUNICATION_TELEPATHIC', 26, u'телепатия', game_relations.COMMUNICATION_TELEPATHIC),
+
+                ('INTELLECT_LEVEL', 27, u'уровень интеллекта', game_relations.INTELLECT_LEVEL),
+
+                ('ACTOR', 28, u'мета-тип существа', game_relations.ACTOR),
+
+                ('PLURAL_FORM', 29, u'есть множественное число', WORD_HAS_PLURAL_FORM),
+
+                ('PERSON_PERSONALITY_COSMETIC', 30, u'косметическая особенность характера', persons_relations.PERSONALITY_COSMETIC),
+                ('PERSON_PERSONALITY_PRACTICAL', 31, u'практическая особенность характера', persons_relations.PERSONALITY_PRACTICAL)
+              )

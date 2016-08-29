@@ -1,14 +1,19 @@
 # coding: utf-8
+import re
 import sys
 import collections
+import logging
 
 from django.db import models as django_models
 from django.db import transaction
-from django.utils.log import getLogger
+
 from django.conf import settings as project_settings
+
+from dext.common.utils import decorators as dext_decorators
 
 from utg import exceptions as utg_exceptions
 from utg import dictionary as utg_dictionary
+from utg import relations as utg_relations
 
 from the_tale.linguistics import relations
 from the_tale.linguistics import prototypes
@@ -24,10 +29,11 @@ from the_tale.linguistics.storage import restrictions_storage
 from . import exceptions
 from . import objects
 from . import models
+from . import conf
 from .lexicon.keys import LEXICON_KEY
 
-logger = getLogger('the-tale.linguistics')
 
+logger = logging.getLogger('the-tale.linguistics')
 
 
 def get_templates_count():
@@ -46,6 +52,15 @@ def get_templates_count():
     return groups_count, keys_count
 
 
+def get_word_restrictions(external, word_form):
+    if utg_relations.NUMBER in word_form.word.type.properties:
+        if word_form.word.properties.is_specified(utg_relations.NUMBER):
+            if word_form.word.properties.get(utg_relations.NUMBER).is_SINGULAR:
+                return ((external, restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM, relations.WORD_HAS_PLURAL_FORM.HAS_NO.value).id), )
+
+    return ((external, restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM, relations.WORD_HAS_PLURAL_FORM.HAS.value).id), )
+
+
 def _process_arguments(args):
     externals = {}
     restrictions = set()
@@ -54,6 +69,7 @@ def _process_arguments(args):
         word_form, variable_restrictions = VARIABLE(k).type.constructor(v)
         externals[k] = word_form
         restrictions.update((k, restriction_id) for restriction_id in variable_restrictions)
+        restrictions.update(get_word_restrictions(k, word_form))
 
     return externals, frozenset(restrictions)
 
@@ -69,7 +85,7 @@ def prepair_get_text(key, args, quiet=False):
     if (not game_lexicon.item.has_key(lexicon_key) and
         not quiet and
         not project_settings.TESTS_RUNNING):
-        logger.warn('unknown template type: %s', lexicon_key)
+        logger.warn('no ingame templates for key: %s', lexicon_key)
 
     return lexicon_key, externals, restrictions
 
@@ -77,16 +93,19 @@ def prepair_get_text(key, args, quiet=False):
 def fake_text(lexicon_key, externals):
     return unicode(lexicon_key) + u': ' + u' '.join(u'%s=%s' % (k, v.form) for k, v in externals.iteritems())
 
+@dext_decorators.retry_on_exception(max_retries=conf.linguistics_settings.MAX_RENDER_TEXT_RETRIES, exceptions=[utg_exceptions.UtgError])
+def _render_utg_text(lexicon_key, restrictions, externals):
+    # dictionary & lexicon can be changed unexpectedly in any time
+    # and some rendered data can be obsolete
+    template = game_lexicon.item.get_random_template(lexicon_key, restrictions=restrictions)
+    return template.substitute(externals, game_dictionary.item)
 
 def render_text(lexicon_key, externals, quiet=False, restrictions=frozenset()):
     if lexicon_key is None:
         return fake_text(lexicon_key, externals)
 
     try:
-        # dictionary & lexicon can be changed unexpectedly in any time
-        # and some rendered data can be obsolete
-        template = game_lexicon.item.get_random_template(lexicon_key, restrictions=restrictions)
-        return template.substitute(externals, game_dictionary.item)
+        return _render_utg_text(lexicon_key, restrictions, externals)
     except utg_exceptions.UtgError as e:
         if not quiet and not project_settings.TESTS_RUNNING:
             logger.error(u'Exception in linguistics; key=%s, args=%r, message: "%s"' % (lexicon_key, externals, e),
@@ -209,3 +228,51 @@ def full_remove_template(template):
                                                 entity_id=template.id,
                                                 state=relations.CONTRIBUTION_STATE.ON_REVIEW).delete()
     template.remove()
+
+
+# that condition exclude synonym forms (inanimate & animate) for adjective and participle forms
+# if there are more conditions appear, it will be better to seprate them in separate mechanism
+def key_is_synomym(key):
+    if utg_relations.ANIMALITY.INANIMATE in key:
+        if utg_relations.CASE.ACCUSATIVE not in key:
+            return True
+
+        if not (utg_relations.GENDER.MASCULINE in key or utg_relations.NUMBER.PLURAL in key):
+            return True
+
+
+RE_NAME = re.compile(r'(\w+)#N')
+RE_HP_UP = re.compile(r'\+(\w+)#HP')
+RE_HP_DOWN = re.compile(r'\-(\w+)#HP')
+RE_GOLD_UP = re.compile(r'\+(\w+)#G')
+RE_GOLD_DOWN = re.compile(r'\-(\w+)#G')
+RE_EXP_UP = re.compile(r'\+(\w+)#EXP')
+RE_EXP_DOWN = re.compile(r'\-(\w+)#EXP')
+RE_ENERGY_UP = re.compile(r'\+(\w+)#EN')
+RE_ENERGY_DOWN = re.compile(r'\-(\w+)#EN')
+RE_EFFECTIVENESS_UP = re.compile(r'\+(\w+)#EF')
+RE_EFFECTIVENESS_DOWN = re.compile(r'\-(\w+)#EF')
+
+def ui_format(text):
+    '''
+    (+|-){variable}#{type}
+    {variable}#N
+
+    types are: HP — hit points, EXP — experience, G — gold, EN — energy, N — name
+    '''
+
+    # ⛁ old money
+
+    text = RE_NAME.sub(u'<span class="log-short log-short-name" rel="tooltip" title="актёр">!\\1!</span>', text)
+    text = RE_HP_UP.sub(u'<span class="log-short log-short-hp-up" rel="tooltip" title="восстановленное здоровье">+!\\1!♥</span>', text)
+    text = RE_HP_DOWN.sub(u'<span class="log-short log-short-hp-down" rel="tooltip" title="полученный урон">-!\\1!♥</span>', text)
+    text = RE_GOLD_UP.sub(u'<span class="log-short log-short-gold-up" rel="tooltip" title="полученные монеты">+!\\1!☉</span>', text)
+    text = RE_GOLD_DOWN.sub(u'<span class="log-short log-short-gold-down" rel="tooltip" title="потерянные монеты">-!\\1!☉</span>', text)
+    text = RE_EXP_UP.sub(u'<span class="log-short log-short-exp-up" rel="tooltip" title="полученный опыт">+!\\1!★</span>', text)
+    # text = RE_EXP_DOWN.sub(u'<span class="log-short log-short-exp-down" rel="tooltip" title="полученный урон">-!\\1!★</span>', text)
+    text = RE_ENERGY_UP.sub(u'<span class="log-short log-short-energy-up" rel="tooltip" title="полученная энергия">+!\\1!⚡</span>', text)
+    text = RE_ENERGY_DOWN.sub(u'<span class="log-short log-short-energy-down" rel="tooltip" title="потерянная энергия">-!\\1!⚡</span>', text)
+    text = RE_EFFECTIVENESS_UP.sub(u'<span class="log-short log-short-effectiveness-up" rel="tooltip" title="полученная эффективность">+!\\1!👁</span>', text)
+    # text = RE_EFFECTIVENESS_DOWN(u'<span class="log-short log-short-effectiveness-down" rel="tooltip" title="полученный урон">-!\\1!⚡</span>', text)
+
+    return text

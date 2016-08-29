@@ -15,7 +15,7 @@ from the_tale.game.map.relations import TERRAIN
 
 from the_tale.game import relations as game_relations
 
-from .relations import MOB_RECORD_STATE, INDEX_ORDER_TYPE, MOB_TYPE
+from .relations import MOB_RECORD_STATE, INDEX_ORDER_TYPE
 from .prototypes import MobRecordPrototype
 from .storage import mobs_storage
 from .forms import MobRecordForm, ModerateMobRecordForm
@@ -23,7 +23,7 @@ from . import meta_relations
 
 
 BASE_INDEX_FILTERS = [list_filter.reset_element(),
-                      list_filter.choice_element(u'тип:', attribute='type', choices=[(None, u'все')] + sorted(list(MOB_TYPE.select('value', 'text')), key=lambda x: x[1])),
+                      list_filter.choice_element(u'тип:', attribute='type', choices=[(None, u'все')] + sorted(list(game_relations.BEING_TYPE.select('value', 'text')), key=lambda x: x[1])),
                       list_filter.choice_element(u'архетип:', attribute='archetype', choices=[(None, u'все')] + sorted(list(game_relations.ARCHETYPE.select('value', 'text')), key=lambda x: x[1])),
                       list_filter.choice_element(u'территория:', attribute='terrain', choices=[(None, u'все')] + sorted(list(TERRAIN.select('value', 'text')), key=lambda x: x[1])),
                       list_filter.choice_element(u'сортировка:',
@@ -60,7 +60,7 @@ class MobResourceBase(Resource):
 
 def argument_to_mob_state(value): return MOB_RECORD_STATE(int(value))
 
-def argument_to_mob_type(value): return MOB_TYPE(int(value))
+def argument_to_mob_type(value): return game_relations.BEING_TYPE(int(value))
 
 def argument_to_archetype(value): return game_relations.ARCHETYPE(int(value))
 
@@ -175,6 +175,9 @@ class GameMobResource(MobResourceBase):
         if not form.is_valid():
             return self.json_error('mobs.create.form_errors', form.errors)
 
+        if [mob for mob in mobs_storage.all() if mob.name == form.c.name.normal_form()]:
+            return self.json_error('mobs.create.duplicate_name', u'Монстр с таким названием уже создан')
+
         mob = MobRecordPrototype.create(uuid=uuid.uuid4().hex,
                                         level=form.c.level,
                                         utg_name=form.c.name,
@@ -185,7 +188,13 @@ class GameMobResource(MobResourceBase):
                                         terrains=form.c.terrains,
                                         editor=self.account,
                                         global_action_probability=form.c.global_action_probability,
-                                        state=MOB_RECORD_STATE.DISABLED)
+                                        state=MOB_RECORD_STATE.DISABLED,
+                                        communication_verbal=form.c.communication_verbal,
+                                        communication_gestures=form.c.communication_gestures,
+                                        communication_telepathic=form.c.communication_telepathic,
+                                        intellect_level=form.c.intellect_level,
+                                        is_mercenary=form.c.is_mercenary,
+                                        is_eatable=form.c.is_eatable)
         return self.json_ok(data={'next_url': reverse('guide:mobs:show', args=[mob.id])})
 
 
@@ -209,6 +218,9 @@ class GameMobResource(MobResourceBase):
 
         if not form.is_valid():
             return self.json_error('mobs.update.form_errors', form.errors)
+
+        if [mob for mob in mobs_storage.all() if mob.name == form.c.name.normal_form() and mob.id != self.mob.id]:
+            return self.json_error('mobs.update.duplicate_name', u'Монстр с таким названием уже создан')
 
         self.mob.update_by_creator(form, editor=self.account)
 

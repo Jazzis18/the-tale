@@ -1,7 +1,7 @@
 {% extends "forum/base.html" %}
 
 {% block title %}Редактирование темы | {{settings.PAGE_TITLE}}{% endblock %}
-{% block description %}Редактирование тему «{{resource.thread.caption}}».{% endblock %}
+{% block description %}Редактирование темы «{{resource.thread.caption}}».{% endblock %}
 
 {% block head %}
 {{ super() }}
@@ -54,7 +54,7 @@ jQuery(document).ready( function(e) {
   {% endif %}
 
   <div class="widget">
-    <input type="submit" value="Сохранить"/>
+    <input type="submit" accesskey="s" value="Сохранить"/>
   </div>
 
 </form>

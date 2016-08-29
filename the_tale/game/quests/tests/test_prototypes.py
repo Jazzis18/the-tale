@@ -1,10 +1,12 @@
 # coding: utf-8
-import mock
+import copy
 import datetime
 import random
+import collections
+
+import mock
 
 from questgen import facts, requirements
-from questgen import actions as questgen_actions
 from questgen.relations import OPTION_MARKERS as QUEST_OPTION_MARKERS
 from questgen.relations import OPTION_MARKERS_GROUPS
 from questgen.quests.base_quest import RESULTS as QUEST_RESULTS
@@ -25,14 +27,13 @@ from the_tale.game.prototypes import TimePrototype
 
 from the_tale.game.actions.prototypes import ActionMoveToPrototype, ActionMoveNearPlacePrototype
 
-from the_tale.game.map.places.storage import places_storage
-from the_tale.game.map.roads.storage import roads_storage
+from the_tale.game.places import storage as places_storage
+from the_tale.game.roads.storage import roads_storage
 from the_tale.game.persons import storage as persons_storage
 from the_tale.game.persons import relations as persons_relations
 from the_tale.game.persons import logic as persons_logic
 from the_tale.game.persons import models as persons_models
 
-from the_tale.game.balance import constants as c
 from the_tale.game.balance import formulas as f
 
 from the_tale.game.actions.prototypes import ActionQuestPrototype
@@ -83,24 +84,23 @@ class PrototypeTests(PrototypeTestsBase):
         super(PrototypeTests, self).setUp()
 
     def test_serialization(self):
-        self.assertEqual(self.quest.serialize(), QuestPrototype.deserialize(self.hero, self.quest.serialize()).serialize())
+        self.assertEqual(self.quest.serialize(), QuestPrototype.deserialize(self.quest.serialize()).serialize())
 
     def test_do_step(self):
         self.hero.quests.updated = False
         self.quest.process()
         self.assertTrue(self.hero.quests.updated)
 
-    def complete_quest(self, callback=lambda : None):
+    def complete_quest(self, callback=lambda : None, positive_results=True):
         current_time = TimePrototype.get_current_time()
 
         # save link to quest, since it will be removed from hero when quest finished
         quest = self.hero.quests.current_quest
 
-        # modify givepower, to give only positive values
-        for fact in quest.knowledge_base._facts.values():
-            for action in getattr(fact, 'actions', ()):
-                if isinstance(action, questgen_actions.GivePower):
-                    action.power = 100
+        # modify quest results, to give only positive power
+        if positive_results:
+            for finish in quest.knowledge_base.filter(facts.Finish):
+                finish.results = {object_uid: QUEST_RESULTS.SUCCESSED for object_uid in finish.results.iterkeys()}
 
         old_quests_done = self.hero.statistics.quests_done
 
@@ -123,14 +123,14 @@ class PrototypeTests(PrototypeTestsBase):
 
     def test_complete_quest(self):
         self.assertEqual(self.hero.quests.interfered_persons, {})
-        self.complete_quest(self.check_ui_info)
+        self.complete_quest(self.check_ui_info, positive_results=False)
         self.assertNotEqual(self.hero.quests.interfered_persons, {})
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_change_person_power', lambda self, person: True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_change_person_power', lambda self, person: True)
     def test_give_person_power__profession(self):
 
-        person = persons_storage.persons_storage.all()[0]
+        person = persons_storage.persons.all()[0]
 
         power_without_profession = self.quest._give_person_power(self.hero, person, 1.0)
 
@@ -140,11 +140,54 @@ class PrototypeTests(PrototypeTestsBase):
         self.assertTrue(power_with_profession < power_without_profession)
 
 
-    @mock.patch('the_tale.game.quests.prototypes.QuestInfo.get_person_power_for_quest', classmethod(lambda cls, hero: 1))
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_change_person_power', lambda self, person: True)
+    def test_give_person_power__politic_power_bonus(self):
+
+        person = persons_storage.persons.all()[0]
+
+        self.quest.current_info.power = 10
+        self.quest.current_info.power_bonus = 1
+
+        self.assertEqual(self.quest._give_person_power(self.hero, person, 3.0), 31)
+
+
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_change_person_power', lambda self, person: True)
+    def test_give_person_power__places_help_history(self):
+
+        person = persons_storage.persons.all()[0]
+
+        person.attrs.places_help_amount = 1
+
+        with self.check_delta(lambda: self.hero.places_history._get_places_statisitcs()[person.place_id], 1):
+            self.quest._give_person_power(self.hero, person, 1)
+
+        person.attrs.places_help_amount = 2
+
+        with self.check_delta(lambda: self.hero.places_history._get_places_statisitcs()[person.place_id], 2):
+            self.quest._give_person_power(self.hero, person, 1)
+
+
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_change_person_power', lambda self, person: True)
+    def test_give_place_power__places_help_history(self):
+
+        for person in self.place_1.persons:
+            person.attrs.places_help_amount = 1
+
+        with self.check_delta(lambda: self.hero.places_history._get_places_statisitcs()[person.place_id], 1):
+            self.quest._give_place_power(self.hero, self.place_1, 1)
+
+        for person in self.place_1.persons:
+            person.attrs.places_help_amount = 2
+
+        with self.check_delta(lambda: self.hero.places_history._get_places_statisitcs()[person.place_id], 1):
+            self.quest._give_place_power(self.hero, self.place_1, 2)
+
+
+
     def test_power_on_end_quest_for_fast_account_hero(self):
         fake_cmd = FakeWorkerCommand()
 
-        self.assertEqual(self.hero.places_history.history, [])
+        self.assertEqual(self.hero.places_history.history, collections.deque())
 
         with mock.patch('the_tale.game.workers.highlevel.Worker.cmd_change_power', fake_cmd):
             self.complete_quest()
@@ -153,13 +196,12 @@ class PrototypeTests(PrototypeTestsBase):
 
         self.assertFalse(fake_cmd.commands)
 
-    @mock.patch('the_tale.game.quests.prototypes.QuestInfo.get_person_power_for_quest', classmethod(lambda cls, hero: 1))
     def test_power_on_end_quest_for_premium_account_hero(self):
 
         self.hero.is_fast = False
         self.hero.premium_state_end_at = datetime.datetime.now() + datetime.timedelta(seconds=60)
 
-        self.assertEqual(self.hero.places_history.history, [])
+        self.assertEqual(self.hero.places_history.history, collections.deque())
 
         with mock.patch('the_tale.game.workers.highlevel.Worker.cmd_change_power') as fake_cmd:
             self.complete_quest()
@@ -168,12 +210,11 @@ class PrototypeTests(PrototypeTestsBase):
 
         self.assertTrue(fake_cmd.call_count > 0)
 
-    @mock.patch('the_tale.game.quests.prototypes.QuestInfo.get_person_power_for_quest', classmethod(lambda cls, hero: 1))
     def test_power_on_end_quest_for_normal_account_hero(self):
 
         self.hero.is_fast = False
 
-        self.assertEqual(self.hero.places_history.history, [])
+        self.assertEqual(self.hero.places_history.history, collections.deque())
 
         with mock.patch('the_tale.game.workers.highlevel.Worker.cmd_change_power') as fake_cmd:
             self.complete_quest()
@@ -183,15 +224,14 @@ class PrototypeTests(PrototypeTestsBase):
         self.assertEqual(fake_cmd.call_count, 0)
 
 
-    @mock.patch('the_tale.game.quests.prototypes.QuestInfo.get_person_power_for_quest', classmethod(lambda cls, hero: 1))
     def test_power_on_end_quest_for_normal_account_hero__in_frontier(self):
 
-        for place in places_storage.all():
-            place._model.is_frontier = True
+        for place in places_storage.places.all():
+            place.is_frontier = True
 
         self.hero.is_fast = False
 
-        self.assertEqual(self.hero.places_history.history, [])
+        self.assertEqual(self.hero.places_history.history, collections.deque())
 
         with mock.patch('the_tale.game.workers.highlevel.Worker.cmd_change_power') as fake_cmd:
             self.complete_quest()
@@ -200,37 +240,60 @@ class PrototypeTests(PrototypeTestsBase):
 
         self.assertTrue(fake_cmd.call_count > 0)
 
-    def test_power_on_end_quest__give_power_called(self):
 
-        with mock.patch('the_tale.game.quests.prototypes.QuestPrototype._give_power') as give_power:
-            self.hero.is_fast = False
-            self.hero.premium_state_end_at = datetime.datetime.now() + datetime.timedelta(seconds=60)
-
-            self.assertEqual(self.hero.places_history.history, [])
-
-            with mock.patch('the_tale.game.workers.highlevel.Worker.cmd_change_power') as fake_cmd:
-                self.complete_quest()
-
-            self.assertTrue(fake_cmd.call_count > 0)
-
-        self.assertTrue(give_power.call_count > 0)
-
-    def test_get_experience_for_quest(self):
+    def test_get_expirience_for_quest(self):
         self.assertEqual(self.hero.experience, 0)
         self.complete_quest()
         self.assertTrue(self.hero.experience > 0)
 
-    def test_modify_experience(self):
-        self.assertEqual(self.quest.modify_experience(100), 100)
 
-        with mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.get_experience_modifier',
-                        mock.Mock(return_value=0.1)) as get_experience_modifier:
-            self.assertTrue(self.quest.modify_experience(100) > 100)
+    @mock.patch('the_tale.game.balance.formulas.experience_for_quest', lambda x: 100)
+    @mock.patch('the_tale.game.heroes.statistics.Statistics.quests_done', 1)
+    def test_get_expirience_for_quest__from_place(self):
+        for place in places_storage.places.all():
+            place.attrs.experience_bonus = 0.0
+        for person in persons_storage.persons.all():
+            person.attrs.experience_bonus = 0.0
 
-        self.assertTrue(get_experience_modifier.call_count > 0)
+        self.assertEqual(self.quest.get_expirience_for_quest(self.quest.current_info.uid, self.hero), 100)
+
+        for place in places_storage.places.all():
+            place.attrs.experience_bonus = 1.0
+
+        self.assertTrue(self.quest.get_expirience_for_quest(self.quest.current_info.uid, self.hero) > 100)
+
+
+    @mock.patch('the_tale.game.balance.formulas.experience_for_quest', lambda x: 100)
+    @mock.patch('the_tale.game.heroes.statistics.Statistics.quests_done', 1)
+    def test_get_expirience_for_quest__from_person(self):
+        for place in places_storage.places.all():
+            place.attrs.experience_bonus = 0.0
+        for person in persons_storage.persons.all():
+            person.attrs.experience_bonus = 0.0
+
+        self.assertEqual(self.quest.get_expirience_for_quest(self.quest.current_info.uid, self.hero), 100)
+
+        for person in persons_storage.persons.all():
+            person.attrs.experience_bonus = 1.0
+
+        self.assertTrue(self.quest.get_expirience_for_quest(self.quest.current_info.uid, self.hero) > 100)
+
+
+    @mock.patch('the_tale.game.balance.formulas.person_power_for_quest', lambda x: 100)
+    def test_get_politic_power_for_quest__from_person(self):
+        for person in persons_storage.persons.all():
+            person.attrs.politic_power_bonus = 0.0
+
+        self.assertEqual(self.quest.get_politic_power_for_quest(self.quest.current_info.uid, self.hero), 100)
+
+        for person in persons_storage.persons.all():
+            person.attrs.politic_power_bonus = 1.0
+
+        self.assertTrue(self.quest.get_politic_power_for_quest(self.quest.current_info.uid, self.hero) > 100)
+
 
     @mock.patch('the_tale.game.balance.constants.ARTIFACTS_PER_BATTLE', 0)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_get_artifact_for_quest', lambda *argv: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_get_artifact_for_quest', lambda *argv: False)
     def test_get_money_for_quest(self):
         self.assertEqual(self.hero.statistics.money_earned_from_quests, 0)
         self.assertEqual(self.hero.statistics.artifacts_had, 0)
@@ -239,7 +302,7 @@ class PrototypeTests(PrototypeTestsBase):
         self.assertEqual(self.hero.statistics.artifacts_had, 0)
 
     @mock.patch('the_tale.game.balance.constants.ARTIFACTS_PER_BATTLE', 0)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_get_artifact_for_quest', lambda *argv: True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_get_artifact_for_quest', lambda *argv: True)
     def test_get_artifacts_for_quest(self):
         self.assertEqual(self.hero.statistics.money_earned_from_quests, 0)
         self.assertEqual(self.hero.statistics.artifacts_had, 0)
@@ -318,7 +381,7 @@ class PrototypeTests(PrototypeTestsBase):
         self.assertEqual(test_artifact.integrity, test_artifact.max_integrity)
 
     def test_upgrade_equipment__money_limit(self):
-        self.hero._model.money = 99999999
+        self.hero.money = 99999999
 
         self.quest._upgrade_equipment(process_message=self.quest.current_info.process_message,
                                       hero=self.hero,
@@ -328,8 +391,40 @@ class PrototypeTests(PrototypeTestsBase):
         self.assertTrue(self.hero.money > 0)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_get_artifact_for_quest', lambda hero: True)
+    def test_modify_reward_scale(self):
+        self.complete_quest(positive_results=True)
+
+        with mock.patch('the_tale.game.quests.prototypes.QuestPrototype.get_state_by_jump_pointer', lambda qp: self.quest.knowledge_base[self.quest.machine.pointer.state]):
+            for person in persons_storage.persons.all():
+                person.attrs.on_profite_reward_bonus = 0
+
+            self.assertEqual(self.quest.modify_reward_scale(1), 1)
+
+            for person in persons_storage.persons.all():
+                person.attrs.on_profite_reward_bonus = 1
+
+            self.assertTrue(self.quest.modify_reward_scale(1) > 1)
+
+
+    def test_give_energy_on_reward(self):
+        self.complete_quest(positive_results=True)
+
+        with mock.patch('the_tale.game.quests.prototypes.QuestPrototype.get_state_by_jump_pointer', lambda qp: self.quest.knowledge_base[self.quest.machine.pointer.state]):
+            for person in persons_storage.persons.all():
+                person.attrs.on_profite_energy = 0
+
+            with self.check_not_changed(lambda: self.hero.energy_bonus):
+                self.quest.give_energy_on_reward()
+
+            for person in persons_storage.persons.all():
+                person.attrs.on_profite_energy = 1
+
+            with self.check_increased(lambda: self.hero.energy_bonus):
+                self.quest.give_energy_on_reward()
+
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_get_artifact_for_quest', lambda hero: True)
     @mock.patch('the_tale.game.balance.constants.ARTIFACT_POWER_DELTA', 0.0)
+    @mock.patch('the_tale.game.quests.prototypes.QuestPrototype.positive_results_persons', lambda self: [])
     def test_give_reward__artifact_scale(self):
 
         self.assertEqual(self.hero.bag.occupation, 0)
@@ -337,11 +432,11 @@ class PrototypeTests(PrototypeTestsBase):
         ArtifactRecordPrototype.create_random('just_ring', type_=ARTIFACT_TYPE.RING)
         ArtifactRecordPrototype.create_random('just_amulet', type_=ARTIFACT_TYPE.AMULET)
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.receive_artifacts_choices',
+        with mock.patch('the_tale.game.heroes.objects.Hero.receive_artifacts_choices',
                         lambda *argv, **kwargs: artifacts_storage.artifacts_for_type([ARTIFACT_TYPE.RING])):
             self.quest._give_reward(self.hero, 'bla-bla', scale=1.0)
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.receive_artifacts_choices',
+        with mock.patch('the_tale.game.heroes.objects.Hero.receive_artifacts_choices',
                         lambda *argv, **kwargs: artifacts_storage.artifacts_for_type([ARTIFACT_TYPE.AMULET])):
             self.quest._give_reward(self.hero, 'bla-bla', scale=1.5)
 
@@ -349,9 +444,10 @@ class PrototypeTests(PrototypeTestsBase):
 
         artifact_1, artifact_2 = sorted(self.hero.bag.values(), key=lambda artifact: artifact.bag_uuid)
 
-        self.assertEqual(abs(artifact_1.power.total() - artifact_2.power.total()), 2 * int(c.POWER_TO_LVL * 0.25))
+        self.assertEqual(artifact_1.level + 1, artifact_2.level)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_get_artifact_for_quest', lambda hero: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_get_artifact_for_quest', lambda hero: False)
+    @mock.patch('the_tale.game.quests.prototypes.QuestPrototype.positive_results_persons', lambda self: [])
     def test_give_reward__money_scale(self):
 
         self.assertEqual(self.hero.money, 0)
@@ -362,13 +458,21 @@ class PrototypeTests(PrototypeTestsBase):
 
         self.quest._give_reward(self.hero, 'bla-bla', scale=1.5)
 
-        self.assertEqual(self.hero.money - not_scaled_money, int(1 + f.sell_artifact_price(self.hero.level) * 1.5))
+        self.assertEqual(self.hero.money - not_scaled_money, int(f.sell_artifact_price(self.hero.level) * 1.5))
+
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_get_artifact_for_quest', lambda hero: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.quest_money_reward_multiplier', lambda hero: -100)
+    @mock.patch('the_tale.game.quests.prototypes.QuestPrototype.positive_results_persons', lambda self: [])
+    def test_give_reward__money_scale_less_then_zero(self):
+
+        with self.check_delta(lambda: self.hero.money, 1):
+            self.quest._give_reward(self.hero, 'bla-bla', scale=1.5)
 
     def test_give_social_power(self):
         self.quest.current_info.power = 10
         self.quest.current_info.power_bonus = 1
 
-        for person in persons_storage.persons_storage.all():
+        for person in persons_storage.persons.all():
             person_uid = uids.person(person.id)
             if person_uid not in self.quest.knowledge_base:
                 self.quest.knowledge_base += logic.fact_person(person)
@@ -431,7 +535,7 @@ class PrototypeTests(PrototypeTestsBase):
         self.quest.current_info.power = 10
         self.quest.current_info.power_bonus = 1
 
-        for person in persons_storage.persons_storage.all():
+        for person in persons_storage.persons.all():
             person_uid = uids.person(person.id)
             if person_uid not in self.quest.knowledge_base:
                 self.quest.knowledge_base += logic.fact_person(person)
@@ -461,7 +565,7 @@ class PrototypeTests(PrototypeTestsBase):
         self.quest.current_info.power = 10
         self.quest.current_info.power_bonus = 1
 
-        for person in persons_storage.persons_storage.all():
+        for person in persons_storage.persons.all():
             person_uid = uids.person(person.id)
             if person_uid not in self.quest.knowledge_base:
                 self.quest.knowledge_base += logic.fact_person(person)
@@ -486,7 +590,7 @@ class PrototypeTests(PrototypeTestsBase):
         self.quest.current_info.power = 10
         self.quest.current_info.power_bonus = 1
 
-        for person in persons_storage.persons_storage.all():
+        for person in persons_storage.persons.all():
             person_uid = uids.person(person.id)
             if person_uid not in self.quest.knowledge_base:
                 self.quest.knowledge_base += logic.fact_person(person)
@@ -505,9 +609,29 @@ class PrototypeTests(PrototypeTestsBase):
         self.assertEqual(calls, set())
 
 
+    def test_finish_quest__person_personality(self):
+        result = random.choice([QUEST_RESULTS.SUCCESSED, QUEST_RESULTS.FAILED])
+        cosmetic = random.choice([persons_relations.PERSONALITY_COSMETIC.TRUTH_SEEKER,
+                                  persons_relations.PERSONALITY_COSMETIC.KNAVE,
+                                  persons_relations.PERSONALITY_COSMETIC.GOOD_SOUL,
+                                  persons_relations.PERSONALITY_COSMETIC.BULLY])
 
-    @mock.patch('the_tale.game.quests.prototypes.QuestPrototype.modify_experience', lambda self, exp: exp)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.experience_modifier', 2)
+        for person in persons_storage.persons.all():
+            person.personality_cosmetic = cosmetic
+            person.refresh_attributes()
+
+        quest_results = {fact.uid: result
+                         for fact in self.quest.knowledge_base.filter(facts.Person)}
+
+        with mock.patch('the_tale.game.heroes.objects.Hero.update_habits') as update_habits:
+            self.quest._finish_quest(mock.Mock(results=quest_results), self.hero)
+
+        self.assertEqual(update_habits.call_args_list,
+                         [mock.call(cosmetic.effect.value[result])]*len(quest_results))
+
+
+
+    @mock.patch('the_tale.game.heroes.objects.Hero.experience_modifier', 2)
     def test_finish_quest__add_bonus_experience(self):
 
         self.quest.current_info.experience = 10
@@ -531,14 +655,13 @@ class PrototypeTests(PrototypeTestsBase):
             with self.check_not_changed(lambda: self.hero.companion.coherence):
                 self.quest._finish_quest(mock.Mock(results=mock.Mock(iteritems=lambda: [])), self.hero)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_premium', True)
     def test_give_power__add_bonus_power(self):
 
         self.quest.current_info.power = 10
         self.quest.current_info.power_bonus = 1
 
-        # we modify power bonus like main power
-        self.assertEqual(self.quest._give_power(self.hero, self.place_1, 2), 22)
+        self.assertEqual(self.quest.get_current_power(2), 20)
 
 
 class InterpreterCallbacksTests(PrototypeTestsBase):
@@ -578,7 +701,7 @@ class InterpreterCallbacksTests(PrototypeTestsBase):
         path = facts.ChoicePath(choice='some_choice', option=jump.uid, default=True)
         self.quest.knowledge_base += path
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.update_habits') as update_habits:
+        with mock.patch('the_tale.game.heroes.objects.Hero.update_habits') as update_habits:
             self.quest.on_jump_end__after_actions(jump)
         self.assertEqual(update_habits.call_args_list, [])
 
@@ -587,7 +710,7 @@ class InterpreterCallbacksTests(PrototypeTestsBase):
         path = facts.ChoicePath(choice='some_choice', option=jump.uid, default=True)
         self.quest.knowledge_base += path
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.update_habits') as update_habits:
+        with mock.patch('the_tale.game.heroes.objects.Hero.update_habits') as update_habits:
             self.quest.on_jump_end__after_actions(jump)
         self.assertEqual(update_habits.call_args_list, [])
 
@@ -609,7 +732,7 @@ class InterpreterCallbacksTests(PrototypeTestsBase):
 
         self.quest.on_jump_end__after_actions(jump)
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.update_habits') as update_habits:
+        with mock.patch('the_tale.game.heroes.objects.Hero.update_habits') as update_habits:
             self.quest.on_state__after_actions(facts.Finish(uid='test_uid',
                                                             start='any_start_uid',
                                                             results={},
@@ -625,7 +748,7 @@ class InterpreterCallbacksTests(PrototypeTestsBase):
         path = facts.ChoicePath(choice='some_choice', option=jump.uid, default=False)
         self.quest.knowledge_base += path
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.update_habits') as update_habits:
+        with mock.patch('the_tale.game.heroes.objects.Hero.update_habits') as update_habits:
             self.quest.on_jump_end__after_actions(jump)
         self.assertEqual(update_habits.call_args_list, [])
 
@@ -634,7 +757,7 @@ class InterpreterCallbacksTests(PrototypeTestsBase):
         path = facts.ChoicePath(choice='some_choice', option=jump.uid, default=False)
         self.quest.knowledge_base += path
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.update_habits') as update_habits:
+        with mock.patch('the_tale.game.heroes.objects.Hero.update_habits') as update_habits:
             self.quest.on_jump_end__after_actions(jump)
         self.assertEqual(update_habits.call_args_list, [])
 
@@ -657,7 +780,7 @@ class InterpreterCallbacksTests(PrototypeTestsBase):
 
         self.quest.on_jump_end__after_actions(jump)
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.update_habits') as update_habits:
+        with mock.patch('the_tale.game.heroes.objects.Hero.update_habits') as update_habits:
             self.quest.on_state__after_actions(facts.Finish(uid='test_uid',
                                                             start='any_start_uid',
                                                             results={},
@@ -675,23 +798,25 @@ class CheckRequirementsTests(PrototypeTestsBase):
         self.hero_fact = self.quest.knowledge_base.filter(facts.Hero).next()
         self.person_fact = self.quest.knowledge_base.filter(facts.Person).next()
 
-        self.person = persons_storage.persons_storage[self.person_fact.externals['id']]
+        self.person = persons_storage.persons[self.person_fact.externals['id']]
 
-        self.place_1_fact = facts.Place(uid='place_1', externals={'id': self.place_1.id})
-        self.place_2_fact = facts.Place(uid='place_2', externals={'id': self.place_2.id})
-        self.place_3_fact = facts.Place(uid='place_3', externals={'id': self.place_3.id})
+        self.place_1_fact = logic.fact_place(self.place_1)
+        self.place_2_fact = logic.fact_place(self.place_2)
+        self.place_3_fact = logic.fact_place(self.place_3)
 
-        self.quest.knowledge_base += [self.place_1_fact, self.place_2_fact, self.place_3_fact]
+        for fact in [self.place_1_fact, self.place_2_fact, self.place_3_fact]:
+            if fact.uid not in self.quest.knowledge_base:
+                self.quest.knowledge_base += fact
 
 
     def get_check_places(self, place_id):
         for place in self.quest.knowledge_base.filter(facts.Place):
-            if places_storage[place.externals['id']].id == place_id:
+            if places_storage.places[place.externals['id']].id == place_id:
                 place_fact = place
                 break
 
         for place in self.quest.knowledge_base.filter(facts.Place):
-            if places_storage[place.externals['id']].id != place_id:
+            if places_storage.places[place.externals['id']].id != place_id:
                 non_place_fact = place
                 break
 
@@ -857,7 +982,7 @@ class CheckRequirementsTests(PrototypeTestsBase):
         requirement = requirements.HasMoney(object=self.hero_fact.uid, money=666)
         self.assertFalse(self.quest.check_has_money(requirement))
 
-        self.hero._model.money = 667
+        self.hero.money = 667
         self.assertTrue(self.quest.check_has_money(requirement))
 
     def test_check_has_money__wrong_requirement(self):
@@ -898,23 +1023,25 @@ class SatisfyRequirementsTests(PrototypeTestsBase):
         self.hero_fact = self.quest.knowledge_base.filter(facts.Hero).next()
         self.person_fact = self.quest.knowledge_base.filter(facts.Person).next()
 
-        self.person = persons_storage.persons_storage[self.person_fact.externals['id']]
+        self.person = persons_storage.persons[self.person_fact.externals['id']]
 
-        self.place_1_fact = facts.Place(uid='place_1', externals={'id': self.place_1.id})
-        self.place_2_fact = facts.Place(uid='place_2', externals={'id': self.place_2.id})
-        self.place_3_fact = facts.Place(uid='place_3', externals={'id': self.place_3.id})
+        self.place_1_fact = logic.fact_place(self.place_1)
+        self.place_2_fact = logic.fact_place(self.place_2)
+        self.place_3_fact = logic.fact_place(self.place_3)
 
-        self.quest.knowledge_base += [self.place_1_fact, self.place_2_fact, self.place_3_fact]
+        for fact in [self.place_1_fact, self.place_2_fact, self.place_3_fact]:
+            if fact.uid not in self.quest.knowledge_base:
+                self.quest.knowledge_base += fact
 
 
     def get_check_places(self, place_id):
         for place in self.quest.knowledge_base.filter(facts.Place):
-            if places_storage[place.externals['id']].id == place_id:
+            if places_storage.places[place.externals['id']].id == place_id:
                 place_fact = place
                 break
 
         for place in self.quest.knowledge_base.filter(facts.Place):
-            if places_storage[place.externals['id']].id != place_id:
+            if places_storage.places[place.externals['id']].id != place_id:
                 non_place_fact = place
                 break
 
@@ -922,8 +1049,29 @@ class SatisfyRequirementsTests(PrototypeTestsBase):
 
     # located in
 
+    def test_satisfy_located_in__moved_person(self):
+        wrong_place_fact_uid = self.place_1_fact.uid if self.person.place_id != self.place_1.id else self.place_2_fact.uid
+        right_place_fact_uid = uids.place(self.person.place_id)
+
+        requirement = requirements.LocatedIn(object=self.person_fact.uid, place=wrong_place_fact_uid)
+
+        for state in self.quest.knowledge_base.filter(facts.State):
+            state.require = tuple(list(state.require) + [requirements.LocatedIn(object=self.person_fact.uid, place=wrong_place_fact_uid)])
+
+        self.quest.satisfy_located_in(requirement)
+
+        self.assertEqual(requirement.object, self.person_fact.uid)
+        self.assertEqual(requirement.place, wrong_place_fact_uid)
+
+        for state in self.quest.knowledge_base.filter(facts.State):
+            in_base_requirement = state.require[-1]
+
+            self.assertEqual(in_base_requirement.object, self.person_fact.uid)
+            self.assertEqual(in_base_requirement.place, right_place_fact_uid)
+
+
     def test_satisfy_located_in__non_hero(self):
-        requirement = requirements.LocatedIn(object=self.person_fact.uid, place=self.place_1_fact.uid)
+        requirement = requirements.LocatedIn(object=self.place_2_fact.uid, place=self.place_1_fact.uid)
         self.assertRaises(exceptions.UnknownRequirementError, self.quest.satisfy_located_in, requirement)
 
     def test_satisfy_located_in__wrong_hero(self):

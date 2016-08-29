@@ -6,9 +6,9 @@ from utg import words as utg_words
 
 from the_tale.game import names
 
-from the_tale.game.persons.prototypes import PersonPrototype
+from the_tale.game.persons import objects as persons_objects
 
-from the_tale.game.map.places.storage import buildings_storage
+from the_tale.game.places import storage as places_storage
 
 from the_tale.game.bills.relations import BILL_TYPE
 from the_tale.game.bills.forms import BaseUserForm, BaseModeratorForm
@@ -20,11 +20,11 @@ class UserForm(BaseUserForm):
 
     def __init__(self, choosen_person_id, *args, **kwargs): # pylint: disable=W0613
         super(UserForm, self).__init__(*args, **kwargs)
-        self.fields['person'].choices = PersonPrototype.form_choices(predicate=self._person_has_building)
+        self.fields['person'].choices = persons_objects.Person.form_choices(predicate=self._person_has_building)
 
     @classmethod
     def _person_has_building(cls, place, person): # pylint: disable=W0613
-        return buildings_storage.get_by_person_id(person.id) is not None
+        return places_storage.buildings.get_by_person_id(person.id) is not None
 
 
 class ModeratorForm(BaseModeratorForm):
@@ -38,10 +38,6 @@ class BuildingDestroy(BasePersonBill):
     UserForm = UserForm
     ModeratorForm = ModeratorForm
 
-    USER_FORM_TEMPLATE = 'bills/bills/building_destroy_user_form.html'
-    MODERATOR_FORM_TEMPLATE = 'bills/bills/building_destroy_moderator_form.html'
-    SHOW_TEMPLATE = 'bills/bills/building_destroy_show.html'
-
     CAPTION = u'Разрушение постройки'
     DESCRIPTION = u'Разрушает здание, принадлежащее выбранному жителю.'
 
@@ -51,25 +47,27 @@ class BuildingDestroy(BasePersonBill):
         self.building_name_forms = building_name_forms
 
         if self.building_name_forms is None:
-            building = buildings_storage.get_by_person_id(self.person_id)
+            building = places_storage.buildings.get_by_person_id(self.person_id)
             if building is not None:
                 self.building_name_forms = building.utg_name
 
     @property
     def base_name(self): return self.building_name_forms.normal_form()
 
+    @property
+    def building(self): return places_storage.buildings.get_by_person_id(self.person.id)
+
+    def has_meaning(self):
+        return self.building and not self.building.state.is_DESTROYED
+
     def apply(self, bill=None):
-        building = buildings_storage.get_by_person_id(self.person.id)
-
-        if building is None or building.state.is_DESTROYED:
-            return
-
-        building.destroy()
+        if self.has_meaning():
+            self.building.destroy()
 
     def initialize_with_user_data(self, user_form):
         super(BuildingDestroy, self).initialize_with_user_data(user_form)
 
-        building = buildings_storage.get_by_person_id(self.person_id)
+        building = places_storage.buildings.get_by_person_id(self.person_id)
         if building is not None:
             self.building_name_forms = building.utg_name
 

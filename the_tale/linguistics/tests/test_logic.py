@@ -9,7 +9,7 @@ from utg import templates as utg_templates
 from utg import words as utg_words
 from utg import relations as utg_relations
 
-from the_tale.common.utils.testcase import TestCase
+from the_tale.common.utils import testcase
 
 from the_tale.game.logic import create_test_map
 
@@ -28,13 +28,17 @@ from ..lexicon import keys
 from the_tale.linguistics.lexicon.groups import relations as groups_relations
 
 
-class LogicTests(TestCase):
+class LogicTests(testcase.TestCase):
 
     def setUp(self):
         super(LogicTests, self).setUp()
 
+        logic.sync_static_restrictions()
+
         storage.game_dictionary.refresh()
         storage.game_lexicon.refresh()
+
+        self.external_id = random.randint(1, 999)
 
 
     def test_get_templates_count(self):
@@ -142,6 +146,55 @@ class LogicTests(TestCase):
 
         self.assertEqual(logic.render_text(lexicon_key, externals, restrictions),
                          u'Герой 1 w-2-нс,ед,дт')
+
+
+    def test_add_word_restrictions_into_variable_restrictions(self):
+
+        key = keys.LEXICON_KEY.HERO_COMMON_JOURNAL_LEVEL_UP
+
+        TEXT = u'[hero|загл] [level] [дубль|hero|дт]'
+
+        template = utg_templates.Template()
+
+        template.parse(TEXT, externals=['hero', 'level'])
+
+        prototypes.TemplatePrototype.create(key=key,
+                                            raw_template=TEXT,
+                                            utg_template=template,
+                                            verificators=[],
+                                            author=None)
+
+        # update template errors_status and state to enshure, that it will be loaded in game lexicon
+        prototypes.TemplatePrototype._db_all().update(errors_status=relations.TEMPLATE_ERRORS_STATUS.NO_ERRORS,
+                                                      state=relations.TEMPLATE_STATE.IN_GAME)
+        storage.game_lexicon.refresh()
+
+        normal_noun = utg_words.WordForm(utg_words.Word.create_test_word(type=utg_relations.WORD_TYPE.NOUN, prefix=u'w-1-', only_required=True))
+        singular_noun = utg_words.WordForm(utg_words.Word.create_test_word(type=utg_relations.WORD_TYPE.NOUN, prefix=u'w-1-', only_required=True,
+                                                                           properties=utg_words.Properties(utg_relations.NUMBER.SINGULAR)))
+        plural_noun = utg_words.WordForm(utg_words.Word.create_test_word(type=utg_relations.WORD_TYPE.NOUN, prefix=u'w-1-', only_required=True,
+                                                                         properties=utg_words.Properties(utg_relations.NUMBER.PLURAL)))
+
+        hero_mock = mock.Mock(utg_name_form=normal_noun, linguistics_restrictions=lambda: [])
+        lexicon_key, externals, restrictions = logic.prepair_get_text(key.name,  args={'hero': hero_mock, 'level': 1})
+        self.assertIn(('hero', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                            relations.WORD_HAS_PLURAL_FORM.HAS.value).id), restrictions)
+        self.assertNotIn(('hero', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                               relations.WORD_HAS_PLURAL_FORM.HAS_NO.value).id), restrictions)
+
+        hero_mock = mock.Mock(utg_name_form=singular_noun, linguistics_restrictions=lambda: [])
+        lexicon_key, externals, restrictions = logic.prepair_get_text(key.name,  args={'hero': hero_mock, 'level': 1})
+        self.assertNotIn(('hero', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                               relations.WORD_HAS_PLURAL_FORM.HAS.value).id), restrictions)
+        self.assertIn(('hero', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                            relations.WORD_HAS_PLURAL_FORM.HAS_NO.value).id), restrictions)
+
+        hero_mock = mock.Mock(utg_name_form=plural_noun, linguistics_restrictions=lambda: [])
+        lexicon_key, externals, restrictions = logic.prepair_get_text(key.name,  args={'hero': hero_mock, 'level': 1})
+        self.assertIn(('hero', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                            relations.WORD_HAS_PLURAL_FORM.HAS.value).id), restrictions)
+        self.assertNotIn(('hero', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                               relations.WORD_HAS_PLURAL_FORM.HAS_NO.value).id), restrictions)
 
 
     def test_update_words_usage_info(self):
@@ -297,11 +350,11 @@ class LogicTests(TestCase):
             with self.check_changed(lambda: storage.restrictions_storage._version):
                 with self.check_delta(storage.restrictions_storage.__len__, 1):
                     restriction = logic.create_restriction(group=group,
-                                                           external_id=666,
+                                                           external_id=self.external_id,
                                                            name=u'bla-bla-name')
 
         self.assertEqual(restriction.group, group)
-        self.assertEqual(restriction.external_id, 666)
+        self.assertEqual(restriction.external_id, self.external_id)
         self.assertEqual(restriction.name, u'bla-bla-name')
 
         model = models.Restriction.objects.get(id=restriction.id)
@@ -315,16 +368,20 @@ class LogicTests(TestCase):
 
         group = random.choice(relations.TEMPLATE_RESTRICTION_GROUP.records)
 
-        logic.create_restriction(group=group, external_id=666, name=u'bla-bla-name')
+        logic.create_restriction(group=group, external_id=self.external_id, name=u'bla-bla-name')
 
         with self.check_not_changed(models.Restriction.objects.count):
             with self.check_not_changed(lambda: storage.restrictions_storage._version):
                 with self.check_not_changed(storage.restrictions_storage.__len__):
                     with transaction.atomic():
-                        self.assertRaises(IntegrityError, logic.create_restriction, group=group, external_id=666, name=u'bla-bla-name')
+                        self.assertRaises(IntegrityError, logic.create_restriction, group=group,
+                                          external_id=self.external_id, name=u'bla-bla-name')
 
 
     def test_sync_static_restrictions(self):
+        models.Restriction.objects.all().delete()
+        storage.restrictions_storage.refresh()
+
         for restrictions_group in relations.TEMPLATE_RESTRICTION_GROUP.records:
 
             if restrictions_group.static_relation is None:
@@ -369,12 +426,13 @@ class LogicTests(TestCase):
     def test_sync_restriction__exists(self):
         group = random.choice(relations.TEMPLATE_RESTRICTION_GROUP.records)
 
-        restriction = logic.create_restriction(group=group, external_id=666, name=u'bla-bla-name')
+        restriction = logic.create_restriction(group=group, external_id=self.external_id, name=u'bla-bla-name')
 
         with self.check_not_changed(models.Restriction.objects.count):
             with self.check_changed(lambda: storage.restrictions_storage._version):
                 with self.check_not_changed(storage.restrictions_storage.__len__):
-                    synced_restriction = logic.sync_restriction(group=group, external_id=666, name=u'new-name')
+                    synced_restriction = logic.sync_restriction(group=group, external_id=self.external_id,
+                                                                name=u'new-name')
 
         self.assertEqual(synced_restriction.name, u'new-name')
 
@@ -441,3 +499,19 @@ class LogicTests(TestCase):
         hero_mock = mock.Mock(utg_name_form=lexicon_dictinonary.DICTIONARY.get_word(u'герой'), linguistics_restrictions=lambda: [])
         args = {'hero': hero_mock, 'level': 1}
         self.assertEqual(logic.get_text(key.name, args=args), logic.fake_text(key.name, logic.prepair_get_text(key.name, args)[1]))
+
+
+    def test_get_word_restrictions(self):
+
+        normal_noun = utg_words.WordForm(utg_words.Word.create_test_word(type=utg_relations.WORD_TYPE.NOUN, prefix=u'w-1-', only_required=True))
+        singular_noun = utg_words.WordForm(utg_words.Word.create_test_word(type=utg_relations.WORD_TYPE.NOUN, prefix=u'w-1-', only_required=True,
+                                                                           properties=utg_words.Properties(utg_relations.NUMBER.SINGULAR)))
+        plural_noun = utg_words.WordForm(utg_words.Word.create_test_word(type=utg_relations.WORD_TYPE.NOUN, prefix=u'w-1-', only_required=True,
+                                                                         properties=utg_words.Properties(utg_relations.NUMBER.PLURAL)))
+
+        self.assertEqual(logic.get_word_restrictions('x', normal_noun), (('x', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                                                                            relations.WORD_HAS_PLURAL_FORM.HAS.value).id),))
+        self.assertEqual(logic.get_word_restrictions('x', singular_noun), (('x', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                                                                              relations.WORD_HAS_PLURAL_FORM.HAS_NO.value).id),))
+        self.assertEqual(logic.get_word_restrictions('x', plural_noun), (('x', storage.restrictions_storage.get_restriction(relations.TEMPLATE_RESTRICTION_GROUP.PLURAL_FORM,
+                                                                                                                            relations.WORD_HAS_PLURAL_FORM.HAS.value).id),))

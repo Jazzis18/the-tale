@@ -64,6 +64,8 @@
           ({{bill.applyed_at_turn|verbose_game_date}})
         {% elif bill.state.is_REMOVED %}
           удалён
+        {% elif bill.state.is_STOPPED %}
+          потерял смысл
         {% endif %}
       </td>
     </tr>
@@ -109,8 +111,7 @@
     {{bill.type.text}}:
     {% for actor in bill.data.actors %}
       {%- if loop.index > 1 -%},{% endif %}
-      {# TODO: here must be some check of actors types #}
-      <a href="{{url('game:map:places:show', actor.id)}}" target="_blank">{{ actor.name }}</a>
+      <a href="{{actor.url}}" target="_blank">{{ actor.name }}</a>
     {% endfor %}
   </small>
 </h4>

@@ -15,9 +15,9 @@ from the_tale.game.bills import relations
 from the_tale.game.bills.forms import BaseUserForm, BaseModeratorForm
 from the_tale.game.bills.bills.base_bill import BaseBill
 
-from the_tale.game.map.places.storage import places_storage, resource_exchange_storage
-from the_tale.game.map.places.prototypes import ResourceExchangePrototype
-from the_tale.game.map.places.relations import RESOURCE_EXCHANGE_TYPE
+from the_tale.game.places import storage as places_storage
+from the_tale.game.places.prototypes import ResourceExchangePrototype
+from the_tale.game.places.relations import RESOURCE_EXCHANGE_TYPE
 
 
 def _conversion_record(name, id_, resource_from, resource_from_delta, resource_to, resource_to_delta):
@@ -57,14 +57,14 @@ class UserForm(BaseUserForm):
 
     def __init__(self, *args, **kwargs):
         super(UserForm, self).__init__(*args, **kwargs)
-        self.fields['place'].choices = places_storage.get_choices()
+        self.fields['place'].choices = places_storage.places.get_choices()
 
     def clean(self):
         cleaned_data = super(UserForm, self).clean()
 
-        place = places_storage.get(int(cleaned_data['place']))
+        place = places_storage.places.get(int(cleaned_data['place']))
 
-        if (c.PLACE_MAX_BILLS_NUMBER <= len(resource_exchange_storage.get_exchanges_for_place(place)) ):
+        if (c.PLACE_MAX_BILLS_NUMBER <= len(places_storage.resource_exchanges.get_exchanges_for_place(place)) ):
             raise ValidationError(u'Один город может поддерживать не более чем %(max_exchanges)d активных закона' %  {'max_exchanges': c.PLACE_MAX_BILLS_NUMBER})
 
         return cleaned_data
@@ -81,10 +81,6 @@ class PlaceResourceConversion(BaseBill):
     UserForm = UserForm
     ModeratorForm = ModeratorForm
 
-    USER_FORM_TEMPLATE = 'bills/bills/place_resource_conversion_user_form.html'
-    MODERATOR_FORM_TEMPLATE = 'bills/bills/place_resource_conversion_moderator_form.html'
-    SHOW_TEMPLATE = 'bills/bills/place_resource_conversion_show.html'
-
     CAPTION = u'Изменение параметров города'
     DESCRIPTION = u'Устанавливает изменение параметров города, обычно, бонус к одним за счёт штрафа к другим. Один город может иметь не более %(max_exchanges)d активных договоров.' %  {'max_exchanges': c.PLACE_MAX_BILLS_NUMBER}
 
@@ -98,7 +94,7 @@ class PlaceResourceConversion(BaseBill):
             self.old_place_name_forms = self.place.utg_name
 
     @property
-    def place(self): return places_storage[self.place_id]
+    def place(self): return places_storage.places[self.place_id]
 
     @property
     def actors(self): return [self.place]
@@ -120,20 +116,24 @@ class PlaceResourceConversion(BaseBill):
         self.conversion = user_form.c.conversion
         self.old_place_name_forms = self.place.utg_name
 
+    def has_meaning(self):
+        return True
+
     def apply(self, bill=None):
-        ResourceExchangePrototype.create(place_1=self.place,
-                                         place_2=None,
-                                         resource_1=self.conversion.resource_from,
-                                         resource_2=self.conversion.resource_to,
-                                         bill=bill)
+        if self.has_meaning():
+            ResourceExchangePrototype.create(place_1=self.place,
+                                             place_2=None,
+                                             resource_1=self.conversion.resource_from,
+                                             resource_2=self.conversion.resource_to,
+                                             bill=bill)
 
     def decline(self, bill):
-        exchange = resource_exchange_storage.get_exchange_for_bill_id(bill.id)
+        exchange = places_storage.resource_exchanges.get_exchange_for_bill_id(bill.id)
         if exchange:
             exchange.remove()
 
     def end(self, bill):
-        exchange = resource_exchange_storage.get_exchange_for_bill_id(bill.id)
+        exchange = places_storage.resource_exchanges.get_exchange_for_bill_id(bill.id)
         if exchange:
             exchange.remove()
 

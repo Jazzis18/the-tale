@@ -11,7 +11,7 @@ from the_tale.game.bills import relations
 from the_tale.game.bills.forms import BaseUserForm, BaseModeratorForm
 from the_tale.game.bills.bills.base_bill import BaseBill
 
-from the_tale.game.map.places.storage import resource_exchange_storage
+from the_tale.game.places import storage as places_storage
 
 
 class UserForm(BaseUserForm):
@@ -20,13 +20,13 @@ class UserForm(BaseUserForm):
 
     def __init__(self, *args, **kwargs):
         super(UserForm, self).__init__(*args, **kwargs)
-        bills = [exchange.bill for exchange in resource_exchange_storage.all() if exchange.bill]
+        bills = [exchange.bill for exchange in places_storage.resource_exchanges.all() if exchange.bill]
         self.fields['declined_bill'].choices = [(bill.id, bill.caption) for bill in bills]
 
     def clean(self):
         cleaned_data = super(UserForm, self).clean()
 
-        if 'declined_bill' not in cleaned_data or not resource_exchange_storage.get_exchange_for_bill_id(cleaned_data['declined_bill']):
+        if 'declined_bill' not in cleaned_data or not places_storage.resource_exchanges.get_exchange_for_bill_id(cleaned_data['declined_bill']):
             raise ValidationError(u'Закон уже не действует или не может быть отменён')
 
         return cleaned_data
@@ -41,10 +41,6 @@ class BillDecline(BaseBill):
 
     UserForm = UserForm
     ModeratorForm = ModeratorForm
-
-    USER_FORM_TEMPLATE = 'bills/bills/bill_decline_user_form.html'
-    MODERATOR_FORM_TEMPLATE = 'bills/bills/bill_decline_moderator_form.html'
-    SHOW_TEMPLATE = 'bills/bills/bill_decline_show.html'
 
     CAPTION = u'Отмена действующего закона'
     DESCRIPTION = u'Отменяет действующий в текущий момент закон'
@@ -68,8 +64,12 @@ class BillDecline(BaseBill):
     def initialize_with_user_data(self, user_form):
         self.declined_bill_id = int(user_form.c.declined_bill)
 
+    def has_meaning(self):
+        self.declined_bill.reload() # enshure that we loaded latest bill version
+        return not self.declined_bill.is_declined
+
     def apply(self, bill=None):
-        if not self.declined_bill.is_declined:
+        if self.has_meaning():
             self.declined_bill.decline(bill)
 
     def serialize(self):

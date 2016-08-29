@@ -9,9 +9,10 @@ from the_tale.game import names
 
 from the_tale.linguistics.forms import WordField
 
-from the_tale.game.persons.prototypes import PersonPrototype
+from the_tale.game.persons import objects as persons_objects
 
-from the_tale.game.map.places.prototypes import BuildingPrototype
+from the_tale.game.places.prototypes import BuildingPrototype
+from the_tale.game.places import storage as places_storage
 
 from the_tale.game.bills.relations import BILL_TYPE
 from the_tale.game.bills.forms import BaseUserForm, BaseModeratorForm
@@ -26,7 +27,7 @@ class UserForm(BaseUserForm):
 
     def __init__(self, choosen_person_id, *args, **kwargs):  # pylint: disable=W0613
         super(UserForm, self).__init__(*args, **kwargs)
-        self.fields['person'].choices = PersonPrototype.form_choices(predicate=lambda place, person: not person.has_building)
+        self.fields['person'].choices = persons_objects.Person.form_choices(predicate=lambda place, person: not person.has_building)
 
 
 class ModeratorForm(BaseModeratorForm):
@@ -41,10 +42,6 @@ class BuildingCreate(BasePersonBill):
     UserForm = UserForm
     ModeratorForm = ModeratorForm
 
-    USER_FORM_TEMPLATE = 'bills/bills/building_create_user_form.html'
-    MODERATOR_FORM_TEMPLATE = 'bills/bills/building_create_moderator_form.html'
-    SHOW_TEMPLATE = 'bills/bills/building_create_show.html'
-
     CAPTION = u'Возведение постройки'
     # TODO: remove hardcoded url
     DESCRIPTION = u'Возводит здание, принадлежащее выбранному горожанину (и соответствующее его профессии). Один житель города может иметь только одну постройку. Помните, что для поддержания работы здания потребуется участие игроков, иначе оно обветшает и разрушится. О типах зданий можно узнать в <a href="/guide/persons">Путеводителе</a>.'
@@ -56,11 +53,12 @@ class BuildingCreate(BasePersonBill):
     @property
     def base_name(self): return self.building_name_forms.normal_form()
 
-    def apply(self, bill=None):
-        if self.person is None or self.person.out_game:
-            return
+    def has_meaning(self):
+        return self.person and places_storage.buildings.get_by_person_id(self.person.id) is None
 
-        BuildingPrototype.create(self.person, utg_name=self.building_name_forms)
+    def apply(self, bill=None):
+        if self.has_meaning():
+            BuildingPrototype.create(self.person, utg_name=self.building_name_forms)
 
     @property
     def user_form_initials(self):

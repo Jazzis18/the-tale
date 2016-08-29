@@ -145,8 +145,8 @@ jQuery(document).ready(function(e){
                       {% for actor in chronicle_actors[record.id] %}
                         {%- if loop.index > 1 -%},{% endif %}
                         {% if actor.type.is_BILL %}<a href="{{url('game:bills:show', actor.bill_id)}}">{{actor.name}}</a>{% endif -%}
-                        {% if actor.type.is_PLACE %}<a href="{{url('game:map:places:show', actor.place_id)}}">{{actor.name}}</a>{% endif -%}
-                        {% if actor.type.is_PERSON %}{{actor.name}}{% endif -%}
+                        {% if actor.type.is_PLACE %}<a href="{{url('game:places:show', actor.place_id)}}">{{actor.name}}</a>{% endif -%}
+                        {% if actor.type.is_PERSON %}<a href="{{url('game:persons:show', actor.person_id)}}">{{actor.name}}</a>{% endif -%}
                       {% endfor %}
                     </span>
                     <br/>
@@ -169,8 +169,6 @@ jQuery(document).ready(function(e){
               <h4 class="newspaper-column-header">Политический обзор</h4>
               <span style="font-size: 8pt;">Политическая ситуация описана согласно данным полученным от ПандораСтат.</span>
               {{ portal_macros.race_statistics(RACE, map_info) }}
-
-              <a href="{{standy_statistics_url()}}">СТАТИСТИКА ОТ STANDY</a>
 
             </div>
           </div>

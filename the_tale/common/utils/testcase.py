@@ -20,16 +20,16 @@ def setUp(self):
     from the_tale.game.artifacts.storage import artifacts_storage
     from the_tale.game.heroes import storage as heroes_storage
     from the_tale.game.map.storage import map_info_storage
-    from the_tale.game.map.places.storage import places_storage, buildings_storage, resource_exchange_storage
-    from the_tale.game.map.roads.storage import roads_storage, waymarks_storage
+    from the_tale.game.places import storage as places_storage
+    from the_tale.game.roads.storage import roads_storage, waymarks_storage
 
     settings.refresh(force=True)
 
     heroes_storage.position_descriptions.clear()
 
-    places_storage.clear()
-    buildings_storage.clear()
-    persons_storage.persons_storage.clear()
+    places_storage.places.clear()
+    places_storage.buildings.clear()
+    persons_storage.persons.clear()
     persons_storage.social_connections.clear()
     waymarks_storage.clear()
     roads_storage.clear()
@@ -37,7 +37,7 @@ def setUp(self):
     companions_storage.companions.clear()
     artifacts_storage.clear()
     map_info_storage.clear()
-    resource_exchange_storage.clear()
+    places_storage.resource_exchanges.clear()
     collections_storage.clear()
     kits_storage.clear()
     items_storage.clear()
@@ -59,16 +59,22 @@ class TestAccountsFactory(object):
         self._next_account_uid += 1
         return self._next_account_uid
 
-    def create_account(self, is_fast=False, password='111111'):
+    def create_account(self, is_fast=False, password='111111', is_bot=False, is_superuser=False):
         from the_tale.accounts.logic import register_user
         from the_tale.accounts.prototypes import AccountPrototype
 
         account_uid = self.get_next_uid()
 
         if is_fast:
-            result, account_id, bundle_id = register_user('fast-user-%d' % account_uid)
+            result, account_id, bundle_id = register_user('fast-user-%d' % account_uid, is_bot=is_bot)
         else:
-            result, account_id, bundle_id = register_user('test-user-%d' % account_uid, 'test-user-%d@test.com' % account_uid, password)
+            result, account_id, bundle_id = register_user('test-user-%d' % account_uid, 'test-user-%d@test.com' % account_uid, password, is_bot=is_bot)
+
+        account = AccountPrototype.get_by_id(account_id)
+
+        if is_superuser:
+            account._model.is_superuser = True
+            account.save()
 
         return AccountPrototype.get_by_id(account_id)
 

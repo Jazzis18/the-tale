@@ -13,7 +13,8 @@ from the_tale.game.bills import relations
 from the_tale.game.bills.forms import BaseUserForm, BaseModeratorForm
 from the_tale.game.bills.bills.base_bill import BaseBill
 
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.places import storage as places_storage
+from the_tale.game.places import logic as places_logic
 
 
 class UserForm(BaseUserForm):
@@ -23,7 +24,8 @@ class UserForm(BaseUserForm):
 
     def __init__(self, *args, **kwargs):
         super(UserForm, self).__init__(*args, **kwargs)
-        self.fields['place'].choices = places_storage.get_choices()
+        self.fields['place'].choices = places_storage.places.get_choices()
+
 
 class ModeratorForm(BaseModeratorForm):
     name = WordField(word_type=utg_relations.WORD_TYPE.NOUN, label=u'Название')
@@ -35,10 +37,6 @@ class PlaceRenaming(BaseBill):
 
     UserForm = UserForm
     ModeratorForm = ModeratorForm
-
-    USER_FORM_TEMPLATE = 'bills/bills/place_renaming_user_form.html'
-    MODERATOR_FORM_TEMPLATE = 'bills/bills/place_renaming_moderator_form.html'
-    SHOW_TEMPLATE = 'bills/bills/place_renaming_show.html'
 
     CAPTION = u'Переименование города'
     DESCRIPTION = u'Изменяет название города. При выборе нового названия постарайтесь учесть, какой расе принадлежит город, кто является его жителями и в какую сторону он развивается.'
@@ -53,7 +51,7 @@ class PlaceRenaming(BaseBill):
             self.old_name_forms = self.place.utg_name
 
     @property
-    def place(self): return places_storage[self.place_id]
+    def place(self): return places_storage.places[self.place_id]
 
     @property
     def actors(self): return [self.place]
@@ -85,9 +83,13 @@ class PlaceRenaming(BaseBill):
     def initialize_with_moderator_data(self, moderator_form):
         self.name_forms = moderator_form.c.name
 
+    def has_meaning(self):
+        return self.place.utg_name != self.name_forms
+
     def apply(self, bill=None):
-        self.place.set_utg_name(self.name_forms)
-        self.place.save()
+        if self.has_meaning():
+            self.place.set_utg_name(self.name_forms)
+            places_logic.save_place(self.place)
 
     def serialize(self):
         return {'type': self.type.name.lower(),

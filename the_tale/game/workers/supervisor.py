@@ -6,11 +6,11 @@ from dext.common.amqp_queues import exceptions as amqp_exceptions
 from the_tale.amqp_environment import environment
 
 from the_tale.common.utils.workers import BaseWorker
-from the_tale.common import postponed_tasks
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 
 from the_tale.accounts.models import Account
 
-from the_tale.game.heroes import prototypes as heroes_prototypes
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.game import exceptions
 from the_tale.game import prototypes
@@ -48,7 +48,7 @@ class Worker(BaseWorker):
     def process_initialize(self):
         self.time = prototypes.TimePrototype.get_current_time()
 
-        postponed_tasks.PostponedTaskPrototype.reset_all()
+        PostponedTaskPrototype.reset_all()
 
         self.logic_workers = {worker.name: worker for worker in (environment.workers.logic_1, environment.workers.logic_2)}
 
@@ -125,7 +125,7 @@ class Worker(BaseWorker):
 
     def choose_logic_worker_to_dispatch(self, account_id):
 
-        hero = heroes_prototypes.HeroPrototype.get_by_account_id(account_id)
+        hero = heroes_logic.load_hero(account_id=account_id)
 
         bundle_id = hero.actions.current_action.bundle_id
 

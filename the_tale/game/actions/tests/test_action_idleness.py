@@ -7,7 +7,7 @@ from the_tale.common.utils import testcase
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.logic import register_user
 
-from the_tale.game.balance import constants as c, formulas as f, enums as e
+from the_tale.game.balance import constants as c, formulas as f
 from the_tale.game.prototypes import TimePrototype
 
 from the_tale.game.logic_storage import LogicStorage
@@ -15,7 +15,8 @@ from the_tale.game.logic import create_test_map
 
 from the_tale.game.abilities.relations import HELP_CHOICES
 
-from the_tale.game.map.roads.storage import roads_storage
+from the_tale.game.roads.storage import roads_storage
+from the_tale.game.heroes import relations as heroes_relations
 
 from the_tale.game.actions import prototypes
 
@@ -82,9 +83,8 @@ class IdlenessActionTest(testcase.TestCase):
         self.storage._test_save()
 
     def test_regenerate_energy_action_create(self):
-        self.hero.preferences.set_energy_regeneration_type(e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY)
-        self.hero.last_energy_regeneration_at_turn -= max([f.angel_energy_regeneration_delay(energy_regeneration_type)
-                                                           for energy_regeneration_type in c.ANGEL_ENERGY_REGENERATION_STEPS.keys()])
+        self.hero.preferences.set_energy_regeneration_type(heroes_relations.ENERGY_REGENERATION.PRAY)
+        self.hero.last_energy_regeneration_at_turn -= max(zip(*heroes_relations.ENERGY_REGENERATION.select('period'))[0])
         self.action_idl.percents = 0.0
         self.storage.process_turn()
         self.assertEqual(len(self.hero.actions.actions_list), 2)
@@ -93,9 +93,8 @@ class IdlenessActionTest(testcase.TestCase):
 
     def test_regenerate_energy_action_not_create_for_sacrifice(self):
         self.action_idl.percents = 0
-        self.hero.preferences.set_energy_regeneration_type(e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE)
-        self.hero.last_energy_regeneration_at_turn -= max([f.angel_energy_regeneration_delay(energy_regeneration_type)
-                                                           for energy_regeneration_type in c.ANGEL_ENERGY_REGENERATION_STEPS.keys()])
+        self.hero.preferences.set_energy_regeneration_type(heroes_relations.ENERGY_REGENERATION.SACRIFICE)
+        self.hero.last_energy_regeneration_at_turn -= max(zip(*heroes_relations.ENERGY_REGENERATION.select('period'))[0])
         self.storage.process_turn()
         self.assertEqual(len(self.hero.actions.actions_list), 1)
         self.assertEqual(self.hero.actions.current_action, self.action_idl)
@@ -158,7 +157,7 @@ class IdlenessActionTest(testcase.TestCase):
         self.action_idl.percents = 1.0
         self.assertFalse(HELP_CHOICES.START_QUEST in self.action_idl.HELP_CHOICES)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
     def test_return_from_road__after_quest(self):
         self.action_idl.state = prototypes.ActionIdlenessPrototype.STATE.QUEST
         self.hero.position.set_road(list(roads_storage.all())[0], percents=0.5)
@@ -166,7 +165,7 @@ class IdlenessActionTest(testcase.TestCase):
         self.assertEqual(self.hero.actions.number, 2)
         self.assertEqual(self.hero.actions.current_action.TYPE, prototypes.ActionMoveToPrototype.TYPE)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
     def test_return_from_wild_terrain__after_quest(self):
         self.action_idl.state = prototypes.ActionIdlenessPrototype.STATE.QUEST
         self.hero.position.set_coordinates(0, 0, 5, 5, percents=0)
@@ -174,7 +173,7 @@ class IdlenessActionTest(testcase.TestCase):
         self.assertEqual(self.hero.actions.number, 2)
         self.assertEqual(self.hero.actions.current_action.TYPE, prototypes.ActionMoveNearPlacePrototype.TYPE)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
     def test_return_from_road__after_resurrect(self):
         self.action_idl.state = prototypes.ActionIdlenessPrototype.STATE.RESURRECT
         self.hero.position.set_road(list(roads_storage.all())[0], percents=0.5)
@@ -182,7 +181,7 @@ class IdlenessActionTest(testcase.TestCase):
         self.assertEqual(self.hero.actions.number, 2)
         self.assertEqual(self.hero.actions.current_action.TYPE, prototypes.ActionMoveToPrototype.TYPE)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
     def test_return_from_wild_terrain__after_resurrect(self):
         self.action_idl.state = prototypes.ActionIdlenessPrototype.STATE.RESURRECT
         self.hero.position.set_coordinates(0, 0, 5, 5, percents=0)

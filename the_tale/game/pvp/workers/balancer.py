@@ -6,17 +6,17 @@ import collections
 
 from django.db import transaction
 
-from dext.common.amqp_queues import BaseWorker
+from the_tale.common.utils.workers import BaseWorker
 
 from the_tale.amqp_environment import environment
 
-from the_tale.common import postponed_tasks
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 
 from the_tale.accounts.prototypes import AccountPrototype
 
-from the_tale.game.heroes.prototypes import HeroPrototype
-
 from the_tale.game.prototypes import SupervisorTaskPrototype
+
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.game.pvp.conf import pvp_settings
 from the_tale.game.pvp.prototypes import Battle1x1Prototype
@@ -54,8 +54,7 @@ class Worker(BaseWorker):
             self._do_balancing()
 
     def initialize(self):
-        # worker initialized by supervisor
-        pass
+        self.logger.info('PVP_BALANCER INITIALIZED')
 
     def cmd_initialize(self, worker_id):
         self.send_cmd('initialize', {'worker_id': worker_id})
@@ -90,13 +89,13 @@ class Worker(BaseWorker):
                                             'account_id': account_id})
 
     def process_logic_task(self, account_id, task_id):#pylint: disable=W0613
-        task = postponed_tasks.PostponedTaskPrototype.get_by_id(task_id)
+        task = PostponedTaskPrototype.get_by_id(task_id)
         task.process(self.logger, pvp_balancer=self)
         task.do_postsave_actions()
 
     def add_to_arena_queue(self, hero_id):
 
-        hero = HeroPrototype.get_by_id(hero_id)
+        hero = heroes_logic.load_hero(hero_id=hero_id)
 
         if hero.account_id in self.arena_queue:
             return None
@@ -119,8 +118,7 @@ class Worker(BaseWorker):
         return battle
 
     def leave_arena_queue(self, hero_id):
-
-        hero = HeroPrototype.get_by_account_id(hero_id)
+        hero = heroes_logic.load_hero(hero_id=hero_id)
 
         battle = Battle1x1Prototype.get_by_account_id(hero.account_id)
 
@@ -231,7 +229,7 @@ class Worker(BaseWorker):
         if bot_account is None:
             return [record], []
 
-        bot_hero = HeroPrototype.get_by_account_id(bot_account.id)
+        bot_hero = heroes_logic.load_hero(account_id=bot_account.id)
 
         self.logger.info('start battle between account %d and bot %d' % (record.account_id, bot_account.id))
 

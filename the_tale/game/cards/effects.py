@@ -8,7 +8,7 @@ from rels.django import DjangoEnum
 
 from the_tale.amqp_environment import environment
 
-from the_tale.common.postponed_tasks import PostponedTaskPrototype
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 from the_tale.common.utils.logic import random_value_by_priority
 
 from the_tale.accounts.prototypes import AccountPrototype
@@ -17,8 +17,11 @@ from the_tale.game.balance.power import Power
 
 from the_tale.game.cards import relations
 
-from the_tale.game.map.places.storage import places_storage, buildings_storage
-from the_tale.game.persons.storage import persons_storage
+from the_tale.game.places import storage as places_storage
+from the_tale.game.places import logic as places_logic
+
+from the_tale.game.persons import storage as persons_storage
+from the_tale.game.persons import logic as persons_logic
 
 from the_tale.game.balance import constants as c
 from the_tale.game.prototypes import TimePrototype
@@ -86,6 +89,7 @@ class LevelUp(BaseEffect):
 
     def use(self, task, storage, **kwargs): # pylint: disable=R0911,W0613
         task.hero.increment_level(send_message=False)
+        storage.save_bundle_data(bundle_id=task.hero.actions.current_action.bundle_id)
         return task.logic_result()
 
 
@@ -127,7 +131,7 @@ class AddExperienceLegendary(AddExperienceBase):
     EXPERIENCE = AddExperienceEpic.EXPERIENCE * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
 
-class AddPowerBase(BaseEffect):
+class AddPoliticPowerBase(BaseEffect):
     TYPE = None
     POWER = None
 
@@ -144,25 +148,25 @@ class AddPowerBase(BaseEffect):
 
         return task.logic_result()
 
-class AddPowerCommon(AddPowerBase):
+class AddPoliticPowerCommon(AddPoliticPowerBase):
     TYPE = relations.CARD_TYPE.ADD_POWER_COMMON
-    POWER = c.HERO_POWER_PER_DAY
+    POWER = c.MINIMUM_CARD_POWER
 
-class AddPowerUncommon(AddPowerBase):
+class AddPoliticPowerUncommon(AddPoliticPowerBase):
     TYPE = relations.CARD_TYPE.ADD_POWER_UNCOMMON
-    POWER = AddPowerCommon.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+    POWER = AddPoliticPowerCommon.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class AddPowerRare(AddPowerBase):
+class AddPoliticPowerRare(AddPoliticPowerBase):
     TYPE = relations.CARD_TYPE.ADD_POWER_RARE
-    POWER = AddPowerUncommon.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+    POWER = AddPoliticPowerUncommon.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class AddPowerEpic(AddPowerBase):
+class AddPoliticPowerEpic(AddPoliticPowerBase):
     TYPE = relations.CARD_TYPE.ADD_POWER_EPIC
-    POWER = AddPowerRare.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+    POWER = AddPoliticPowerRare.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class AddPowerLegendary(AddPowerBase):
+class AddPoliticPowerLegendary(AddPoliticPowerBase):
     TYPE = relations.CARD_TYPE.ADD_POWER_LEGENDARY
-    POWER = AddPowerEpic.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+    POWER = AddPoliticPowerEpic.POWER * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
 
 class AddBonusEnergyBase(BaseEffect):
@@ -599,7 +603,7 @@ class InstantMonsterKill(BaseEffect):
         if not task.hero.actions.current_action.TYPE.is_BATTLE_PVE_1X1:
             return task.logic_result(next_step=UseCardTask.STEP.ERROR, message=u'Герой ни с кем не сражается.')
 
-        task.hero.actions.current_action.bit_mob(1.01)
+        task.hero.actions.current_action.bit_mob(task.hero.actions.current_action.mob.max_health)
 
         return task.logic_result()
 
@@ -617,21 +621,21 @@ class KeepersGoodsBase(BaseEffect):
 
         place_id = task.data.get('place_id')
 
-        if place_id not in places_storage:
+        if place_id not in places_storage.places:
             return task.logic_result(next_step=UseCardTask.STEP.ERROR, message=u'Город не найден.')
 
         if task.step.is_LOGIC:
             return task.logic_result(next_step=UseCardTask.STEP.HIGHLEVEL)
 
         elif task.step.is_HIGHLEVEL:
-            place = places_storage[place_id]
+            place = places_storage.places[place_id]
 
-            place.keepers_goods += self.GOODS
-            place.sync_parameters()
+            place.attrs.keepers_goods += self.GOODS
+            place.refresh_attributes()
 
-            place.save()
+            places_logic.save_place(place)
 
-            places_storage.update_version()
+            places_storage.places.update_version()
 
             return task.logic_result()
 
@@ -667,162 +671,194 @@ class RepairBuilding(BaseEffect):
 
         building_id = task.data.get('building_id')
 
-        if building_id not in buildings_storage:
+        if building_id not in places_storage.buildings:
             return task.logic_result(next_step=UseCardTask.STEP.ERROR, message=u'Строение не найдено.')
 
         if task.step.is_LOGIC:
             return task.logic_result(next_step=UseCardTask.STEP.HIGHLEVEL)
 
         elif task.step.is_HIGHLEVEL:
-            building = buildings_storage[building_id]
+            building = places_storage.buildings[building_id]
 
             while building.need_repair:
                 building.repair()
 
             building.save()
 
-            buildings_storage.update_version()
+            places_storage.buildings.update_version()
 
             return task.logic_result()
 
 
 
-class PersonPowerBonusBase(BaseEffect):
+class AddPersonPowerBase(BaseEffect):
     TYPE = None
     BONUS = None
 
     @property
     def DESCRIPTION(self):
-        return u'Увеличивает бонус к начисляемому положительному влиянию советника на %(bonus).2f%%.' % {'bonus': self.BONUS*100}
+        if self.BONUS > 0:
+            return u'Моментально увеличивает влияние Мастера на %(bonus)d единиц. Влияние засчитывается так, как если бы герой имел Мастера в предпочтении.' % {'bonus': self.BONUS}
+
+        return u'Моментально уменьшает влияние Мастера на %(bonus)d единиц. Влияние засчитывается так, как если бы герой имел Мастера в предпочтении.' % {'bonus': -self.BONUS}
+
+    @property
+    def success_message(self):
+        if self.BONUS > 0:
+            return u'Влияние Мастера увеличено на %(bonus)d..' % {'bonus': self.BONUS}
+
+        return u'Влияние Мастера уменьшено на %(bonus)d.' % {'bonus': -self.BONUS}
+
 
     def use(self, task, storage, highlevel=None, **kwargs): # pylint: disable=R0911,W0613
 
         person_id = task.data.get('person_id')
 
-        if person_id not in persons_storage:
-            return task.logic_result(next_step=UseCardTask.STEP.ERROR, message=u'Советник не найден.')
+        if person_id not in persons_storage.persons:
+            return task.logic_result(next_step=UseCardTask.STEP.ERROR, message=u'Мастер не найден.')
 
-        person = persons_storage[person_id]
+        person = persons_storage.persons[person_id]
 
         if task.step.is_LOGIC:
             return task.logic_result(next_step=UseCardTask.STEP.HIGHLEVEL)
 
         elif task.step.is_HIGHLEVEL:
 
-            person.push_power_positive(TimePrototype.get_current_turn_number(), self.BONUS)
-
-            person.save()
-
-            persons_storage.update_version()
+            person.politic_power.change_power(person=person,
+                                              hero_id=task.hero_id,
+                                              has_in_preferences=True,
+                                              power=self.BONUS)
+            persons_logic.save_person(person)
+            persons_storage.persons.update_version()
 
             return task.logic_result()
 
 
-class PersonPowerBonusCommon(PersonPowerBonusBase):
-    TYPE = relations.CARD_TYPE.PERSON_POWER_BONUS_POSITIVE_COMMON
-    BONUS = c.HERO_POWER_BONUS
+class AddPersonPowerPositiveCommon(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_POSITIVE_COMMON
+    BONUS = c.MINIMUM_CARD_POWER / 2
 
-class PersonPowerBonusUncommon(PersonPowerBonusBase):
-    TYPE = relations.CARD_TYPE.PERSON_POWER_BONUS_POSITIVE_UNCOMMON
-    BONUS = PersonPowerBonusCommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPersonPowerPositiveUncommon(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_POSITIVE_UNCOMMON
+    BONUS = AddPersonPowerPositiveCommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PersonPowerBonusRare(PersonPowerBonusBase):
-    TYPE = relations.CARD_TYPE.PERSON_POWER_BONUS_POSITIVE_RARE
-    BONUS = PersonPowerBonusUncommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPersonPowerPositiveRare(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_POSITIVE_RARE
+    BONUS = AddPersonPowerPositiveUncommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PersonPowerBonusEpic(PersonPowerBonusBase):
-    TYPE = relations.CARD_TYPE.PERSON_POWER_BONUS_POSITIVE_EPIC
-    BONUS = PersonPowerBonusRare.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPersonPowerPositiveEpic(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_POSITIVE_EPIC
+    BONUS = AddPersonPowerPositiveRare.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PersonPowerBonusLegendary(PersonPowerBonusBase):
-    TYPE = relations.CARD_TYPE.PERSON_POWER_BONUS_POSITIVE_LEGENDARY
-    BONUS = PersonPowerBonusEpic.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPersonPowerPositiveLegendary(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_POSITIVE_LEGENDARY
+    BONUS = AddPersonPowerPositiveEpic.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+
+
+class AddPersonPowerNegativeCommon(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_NEGATIVE_COMMON
+    BONUS = -c.MINIMUM_CARD_POWER / 2
+
+class AddPersonPowerNegativeUncommon(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_NEGATIVE_UNCOMMON
+    BONUS = AddPersonPowerNegativeCommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+
+class AddPersonPowerNegativeRare(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_NEGATIVE_RARE
+    BONUS = AddPersonPowerNegativeUncommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+
+class AddPersonPowerNegativeEpic(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_NEGATIVE_EPIC
+    BONUS = AddPersonPowerNegativeRare.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+
+class AddPersonPowerNegativeLegendary(AddPersonPowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PERSON_POWER_NEGATIVE_LEGENDARY
+    BONUS = AddPersonPowerNegativeEpic.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
 
 
-class PlacePowerBonusBase(BaseEffect):
+class AddPlacePowerBase(BaseEffect):
     TYPE = None
     BONUS = None
 
     @property
     def DESCRIPTION(self):
         if self.BONUS > 0:
-            return u'Увеличивает бонус к начисляемому городу положительному влиянию на %(bonus).2f%%.' % {'bonus': self.BONUS*100}
+            return u'Моментально увеличивает влияние города на %(bonus)d единиц. Влияние защитывается так, как если бы герой имел город в предпочтении.' % {'bonus': self.BONUS}
 
-        return u'Увеличивает бонус к начисляемому городу негативному влиянию на %(bonus).2f%%.' % {'bonus': -self.BONUS*100}
+        return u'Моментально уменьшает влияние города на %(bonus)d единиц. Влияние защитывается так, как если бы герой имел город в предпочтении.' % {'bonus': -self.BONUS}
 
     @property
     def success_message(self):
         if self.BONUS > 0:
-            return u'Бонус к начисляемому городу положительному влиянию увеличен на%(bonus).2f%%.' % {'bonus': self.BONUS*100}
+            return u'Влияние города увеличено на %(bonus)d..' % {'bonus': self.BONUS}
 
-        return u'Бонус к начисляемому городу негативному влиянию увеличен на %(bonus).2f%%.' % {'bonus': -self.BONUS*100}
+        return u'Влияние города уменьшено на %(bonus)d.' % {'bonus': -self.BONUS}
 
     def use(self, task, storage, highlevel=None, **kwargs): # pylint: disable=R0911,W0613
 
         place_id = task.data.get('place_id')
 
-        if place_id not in places_storage:
+        if place_id not in places_storage.places:
             return task.logic_result(next_step=UseCardTask.STEP.ERROR, message=u'Город не найден.')
 
         if task.step.is_LOGIC:
             return task.logic_result(next_step=UseCardTask.STEP.HIGHLEVEL)
 
         elif task.step.is_HIGHLEVEL:
-            place = places_storage[place_id]
+            place = places_storage.places[place_id]
 
-            if self.BONUS > 0:
-                place.push_power_positive(TimePrototype.get_current_turn_number(), self.BONUS)
-            else:
-                place.push_power_negative(TimePrototype.get_current_turn_number(), -self.BONUS)
+            place.politic_power.change_power(place=place,
+                                             hero_id=task.hero_id,
+                                             has_in_preferences=True,
+                                             power=self.BONUS)
 
-            place.save()
-
-            places_storage.update_version()
+            places_logic.save_place(place)
+            places_storage.places.update_version()
 
             return task.logic_result()
 
 
-class PlacePowerBonusPositiveCommon(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_POSITIVE_COMMON
-    BONUS = c.HERO_POWER_BONUS
+class AddPlacePowerPositiveCommon(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_POSITIVE_COMMON
+    BONUS = c.MINIMUM_CARD_POWER / 2
 
-class PlacePowerBonusPositiveUncommon(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_POSITIVE_UNCOMMON
-    BONUS = PlacePowerBonusPositiveCommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerPositiveUncommon(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_POSITIVE_UNCOMMON
+    BONUS = AddPlacePowerPositiveCommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PlacePowerBonusPositiveRare(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_POSITIVE_RARE
-    BONUS = PlacePowerBonusPositiveUncommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerPositiveRare(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_POSITIVE_RARE
+    BONUS = AddPlacePowerPositiveUncommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PlacePowerBonusPositiveEpic(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_POSITIVE_EPIC
-    BONUS = PlacePowerBonusPositiveRare.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerPositiveEpic(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_POSITIVE_EPIC
+    BONUS = AddPlacePowerPositiveRare.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PlacePowerBonusPositiveLegendary(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_POSITIVE_LEGENDARY
-    BONUS = PlacePowerBonusPositiveEpic.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerPositiveLegendary(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_POSITIVE_LEGENDARY
+    BONUS = AddPlacePowerPositiveEpic.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
 
-class PlacePowerBonusNegativeCommon(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_NEGATIVE_COMMON
-    BONUS = -c.HERO_POWER_BONUS
+class AddPlacePowerNegativeCommon(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_NEGATIVE_COMMON
+    BONUS = -c.MINIMUM_CARD_POWER / 2
 
-class PlacePowerBonusNegativeUncommon(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_NEGATIVE_UNCOMMON
-    BONUS = PlacePowerBonusNegativeCommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerNegativeUncommon(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_NEGATIVE_UNCOMMON
+    BONUS = AddPlacePowerNegativeCommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PlacePowerBonusNegativeRare(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_NEGATIVE_RARE
-    BONUS = PlacePowerBonusNegativeUncommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerNegativeRare(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_NEGATIVE_RARE
+    BONUS = AddPlacePowerNegativeUncommon.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PlacePowerBonusNegativeEpic(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_NEGATIVE_EPIC
-    BONUS = PlacePowerBonusNegativeRare.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerNegativeEpic(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_NEGATIVE_EPIC
+    BONUS = AddPlacePowerNegativeRare.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
-class PlacePowerBonusNegativeLegendary(PlacePowerBonusBase):
-    TYPE = relations.CARD_TYPE.PLACE_POWER_BONUS_NEGATIVE_LEGENDARY
-    BONUS = PlacePowerBonusNegativeEpic.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
+class AddPlacePowerNegativeLegendary(AddPlacePowerBase):
+    TYPE = relations.CARD_TYPE.ADD_PLACE_POWER_NEGATIVE_LEGENDARY
+    BONUS = AddPlacePowerNegativeEpic.BONUS * (c.CARDS_COMBINE_TO_UP_RARITY + 1)
 
 
 class HelpPlaceBase(BaseEffect):
@@ -844,7 +880,7 @@ class HelpPlaceBase(BaseEffect):
     def use(self, task, storage, **kwargs): # pylint: disable=R0911,W0613
         place_id = task.data.get('place_id')
 
-        if place_id not in places_storage:
+        if place_id not in places_storage.places:
             return task.logic_result(next_step=UseCardTask.STEP.ERROR, message=u'Город не найден.')
 
         for i in xrange(self.HELPS):
@@ -923,19 +959,19 @@ class ExperienceToEnergyBase(BaseEffect):
 
 class ExperienceToEnergyUncommon(ExperienceToEnergyBase):
     TYPE = relations.CARD_TYPE.EXPERIENCE_TO_ENERGY_UNCOMMON
-    EXPERIENCE = 6
+    EXPERIENCE = 7
 
 class ExperienceToEnergyRare(ExperienceToEnergyBase):
     TYPE = relations.CARD_TYPE.EXPERIENCE_TO_ENERGY_RARE
-    EXPERIENCE = 5
+    EXPERIENCE = 6
 
 class ExperienceToEnergyEpic(ExperienceToEnergyBase):
     TYPE = relations.CARD_TYPE.EXPERIENCE_TO_ENERGY_EPIC
-    EXPERIENCE = 4
+    EXPERIENCE = 5
 
 class ExperienceToEnergyLegendary(ExperienceToEnergyBase):
     TYPE = relations.CARD_TYPE.EXPERIENCE_TO_ENERGY_LEGENDARY
-    EXPERIENCE = 3
+    EXPERIENCE = 4
 
 
 class SharpRandomArtifact(BaseEffect):
@@ -1096,7 +1132,7 @@ class HealCompanionLegendary(HealCompanionBase):
 
 class UpgradeArtifact(BaseEffect):
     TYPE = relations.CARD_TYPE.INCREMENT_ARTIFACT_RARITY
-    DESCRIPTION = u'Улучшает на один уровень качество случайного экипированного не эпического артефакта.'
+    DESCRIPTION = u'Заменяет случайный экипированный не эпический артефакт, на более редкий того же вида.'
 
     def use(self, task, storage, **kwargs): # pylint: disable=R0911,W0613
 

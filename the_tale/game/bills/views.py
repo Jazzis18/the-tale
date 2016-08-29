@@ -16,9 +16,9 @@ from the_tale.common.utils.decorators import login_required, lazy_property
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.views import validate_fast_account, validate_ban_game
 
-from the_tale.game.heroes.prototypes import HeroPrototype
+from the_tale.game.places import storage as places_storage
 
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.heroes import logic as heroes_logic
 
 from .prototypes import BillPrototype, VotePrototype
 from .conf import bills_settings
@@ -35,7 +35,7 @@ BASE_INDEX_FILTERS = [list_filter.reset_element(),
                                                                                             (BILL_STATE.ACCEPTED.value, u'принятые'),
                                                                                             (BILL_STATE.REJECTED.value, u'отклонённые') ]),
                       list_filter.choice_element(u'тип:', attribute='bill_type', choices=[(None, u'все')] + list(BILL_TYPE.select('value', 'text'))),
-                      list_filter.choice_element(u'город:', attribute='place', choices=lambda x: [(None, u'все')] + places_storage.get_choices()) ]
+                      list_filter.choice_element(u'город:', attribute='place', choices=lambda x: [(None, u'все')] + places_storage.places.get_choices()) ]
 
 LOGINED_INDEX_FILTERS = BASE_INDEX_FILTERS + [list_filter.choice_element(u'голосование:', attribute='voted', choices=[(None, u'все')] + list(VOTED_TYPE.select('value', 'text'))),]
 
@@ -53,7 +53,7 @@ def argument_to_bill_state(value): return BILL_STATE(int(value))
 class BillResource(Resource):
 
     @lazy_property
-    def hero(self): return HeroPrototype.get_by_account_id(self.account.id)
+    def hero(self): return heroes_logic.load_hero(account_id=self.account.id)
 
     @property
     def can_participate_in_politics(self):
@@ -99,7 +99,7 @@ class BillResource(Resource):
     @validate_argument('state', argument_to_bill_state, 'bills', u'неверное состояние закона')
     @validate_argument('bill_type', argument_to_bill_type, 'bills', u'неверный тип закона')
     @validate_argument('voted', VOTED_TYPE, 'bills', u'неверный тип фильтра голосования')
-    @validate_argument('place', lambda value: places_storage[int(value)], 'bills', u'не существует такого города')
+    @validate_argument('place', lambda value: places_storage.places[int(value)], 'bills', u'не существует такого города')
     @handler('', method='get')
     def index(self, page=1, owner=None, state=None, bill_type=None, voted=None, place=None):#pylint: disable=R0914
 
@@ -176,10 +176,13 @@ class BillResource(Resource):
     @validate_argument('bill_type', argument_to_bill_type, 'bills.new', u'неверный тип закона')
     @handler('new', method='get')
     def new(self, bill_type):
+        if not bill_type.enabled:
+            return self.auto_error('bills.new.bill_type.not_enabled', u'Этот тип закона создать нельзя', response_type='html')
+
         bill_class = BILLS_BY_ID[bill_type.value]
         return self.template('bills/new.html', {'bill_class': bill_class,
                                                 'page_type': 'new',
-                                                'form': bill_class.get_user_form_create()})
+                                                'form': bill_class.get_user_form_create(owner_id=self.account.id)})
 
     @login_required
     @validate_fast_account()
@@ -188,6 +191,9 @@ class BillResource(Resource):
     @validate_argument('bill_type', argument_to_bill_type, 'bills.create', u'неверный тип закона')
     @handler('create', method='post')
     def create(self, bill_type):
+
+        if not bill_type.enabled:
+            return self.json_error('bills.create.bill_type.not_enabled', u'Этот тип закона создать нельзя')
 
         if datetime.datetime.now() - self.account.created_at < datetime.timedelta(days=bills_settings.MINIMUM_BILL_OWNER_AGE):
             return self.json_error('bills.create.too_young_owner',
@@ -198,7 +204,7 @@ class BillResource(Resource):
 
         bill_data = BILLS_BY_ID[bill_type.value]()
 
-        user_form = bill_data.get_user_form_create(self.request.POST)
+        user_form = bill_data.get_user_form_create(self.request.POST, owner_id=self.account.id)
 
         if user_form.is_valid():
             bill_data.initialize_with_user_data(user_form)
@@ -238,7 +244,7 @@ class BillResource(Resource):
     @validate_voting_state(message=u'Можно редактировать только законы, находящиеся в стадии голосования')
     @handler('#bill', 'edit', name='edit', method='get')
     def edit(self):
-        user_form = self.bill.data.get_user_form_update(initial=self.bill.user_form_initials)
+        user_form = self.bill.data.get_user_form_update(initial=self.bill.user_form_initials, owner_id=self.account.id)
         return self.template('bills/edit.html', {'bill': self.bill,
                                                  'bill_class': self.bill.data,
                                                  'page_type': 'edit',
@@ -252,7 +258,7 @@ class BillResource(Resource):
     @validate_voting_state(message=u'Можно редактировать только законы, находящиеся в стадии голосования')
     @handler('#bill', 'update', name='update', method='post')
     def update(self):
-        user_form = self.bill.data.get_user_form_update(post=self.request.POST)
+        user_form = self.bill.data.get_user_form_update(post=self.request.POST, owner_id=self.account.id)
 
         if user_form.is_valid():
             self.bill.update(user_form)

@@ -21,6 +21,7 @@ from the_tale.linguistics.lexicon.keys import LEXICON_KEY
 
 from the_tale.game.heroes.relations import EQUIPMENT_SLOT
 from the_tale.game.heroes.relations import ITEMS_OF_EXPENDITURE
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.game.logic_storage import LogicStorage
 
@@ -34,7 +35,8 @@ from the_tale.game.prototypes import TimePrototype
 
 from the_tale.game.actions.prototypes import ActionQuestPrototype, ActionIdlenessPrototype
 
-from the_tale.game.map.places.modifiers import HolyCity
+from the_tale.game.places import modifiers as places_modifiers
+from the_tale.game.places import logic as places_logic
 
 from the_tale.game.quests.writers import Writer
 from the_tale.game.quests.prototypes import QuestPrototype
@@ -49,12 +51,12 @@ class QuestsTestBase(testcase.TestCase):
         self.p1, self.p2, self.p3 = create_test_map()
 
         # add more persons, to lower conflicts
-        self.p1.add_person()
-        self.p1.add_person()
-        self.p2.add_person()
-        self.p2.add_person()
-        self.p3.add_person()
-        self.p3.add_person()
+        places_logic.add_person_to_place(self.p1)
+        places_logic.add_person_to_place(self.p1)
+        places_logic.add_person_to_place(self.p2)
+        places_logic.add_person_to_place(self.p2)
+        places_logic.add_person_to_place(self.p3)
+        places_logic.add_person_to_place(self.p3)
 
         persons_logic.sync_social_connections()
 
@@ -65,20 +67,20 @@ class QuestsTestBase(testcase.TestCase):
         self.hero = self.storage.accounts_to_heroes[account_id]
         self.action_idl = self.hero.actions.current_action
 
-        self.hero._model.money += 1
+        self.hero.money += 1
         self.hero.preferences.set_mob(mobs_storage.all()[0])
         self.hero.preferences.set_place(self.p1)
         self.hero.preferences.set_friend(self.p1.persons[0])
         self.hero.preferences.set_enemy(self.p2.persons[0])
         self.hero.preferences.set_equipment_slot(EQUIPMENT_SLOT.PLATE)
         self.hero.position.set_place(self.p3)
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
 
-        self.p2.modifier = HolyCity(self.p2)
-        self.p2.save()
+        self.p2.set_modifier(places_modifiers.CITY_MODIFIERS.HOLY_CITY)
+        places_logic.save_place(self.p2)
 
-        self.p1.persons[0]._model.type = PERSON_TYPE.BLACKSMITH
-        self.p1.persons[0].save()
+        self.p1.persons[0].type = PERSON_TYPE.BLACKSMITH
+        persons_logic.save_person(self.p1.persons[0])
 
 
 class QuestsTest(QuestsTestBase):
@@ -97,15 +99,15 @@ def create_test_method(quest, quests):
 
     internal_quests = {q.quest_class.TYPE: q.quest_class for q in quests }
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_short_quest_path_required', False)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_first_quest_path_required', False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_short_quest_path_required', False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_first_quest_path_required', False)
     @mock.patch('the_tale.game.quests.logic.QUESTS_BASE._quests', internal_quests)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.get_quests_priorities', lambda hero: [(quest, 10000000)] + [(q, 0) for q in quests if q != quest])
+    @mock.patch('the_tale.game.heroes.objects.Hero.get_quests_priorities', lambda hero: [(quest, 10000000)] + [(q, 0) for q in quests if q != quest])
     def quest_test_method(self):
 
         # defends from first quest rule
         self.hero.statistics.change_quests_done(1)
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
 
         current_time = TimePrototype.get_current_time()
 
@@ -113,8 +115,8 @@ def create_test_method(quest, quests):
 
         while self.hero.actions.current_action.TYPE != ActionQuestPrototype.TYPE or not self.hero.quests.has_quests:
             if quest == SearchSmith and test_upgrade_equipment:
-                self.hero._model.money = QuestPrototype.upgrade_equipment_cost(self.hero) * 2
-                self.hero._model.next_spending = ITEMS_OF_EXPENDITURE.INSTANT_HEAL
+                self.hero.money = QuestPrototype.upgrade_equipment_cost(self.hero) * 2
+                self.hero.next_spending = ITEMS_OF_EXPENDITURE.INSTANT_HEAL
 
             self.storage.process_turn()
             current_time.increment_turn()
@@ -196,12 +198,12 @@ class RawQuestsTest(QuestsTestBase):
                 self._check_messages(quest_type, '%s_artifact' % action.type)
 
 
-    def _get_powers(self, start, actions):
+    def _get_powers(self, start, current_state):
         powers = set()
 
-        for action in actions:
-            if isinstance(action, questgen_actions.GivePower):
-                powers.add((start, action.object))
+        if isinstance(current_state, facts.Finish):
+            for object_uid in current_state.results.iterkeys():
+                powers.add((start, object_uid))
 
         return powers
 
@@ -226,7 +228,7 @@ class RawQuestsTest(QuestsTestBase):
 
         self._check_action_messages(starts[-1][1], current_state.actions)
 
-        powers |= self._get_powers(starts[-1][0], current_state.actions)
+        powers |= self._get_powers(starts[-1][0], current_state)
 
         if isinstance(current_state, facts.Finish):
             starts.pop()
@@ -238,9 +240,6 @@ class RawQuestsTest(QuestsTestBase):
 
             self._check_action_messages(starts[-1][1], next_jump.start_actions)
             self._check_action_messages(starts[-1][1], next_jump.end_actions)
-
-            powers |= self._get_powers(starts[-1][0], next_jump.start_actions)
-            powers |= self._get_powers(starts[-1][0], next_jump.end_actions)
 
             if isinstance(next_jump, facts.Option):
                 writer = Writer(type=starts[-1][1], message='choice', substitution={}, hero=self.hero)
@@ -256,8 +255,8 @@ class RawQuestsTest(QuestsTestBase):
 
 def create_test_messages_method(quest, quests):
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_short_quest_path_required', False)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_first_quest_path_required', False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_short_quest_path_required', False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_first_quest_path_required', False)
     def quest_test_method(self):
         from questgen.selectors import Selector
 

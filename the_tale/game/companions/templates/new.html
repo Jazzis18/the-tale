@@ -35,12 +35,18 @@ jQuery(document).ready( function(e) {
   {{ form.archetype.widget }}
   {{ form.mode.widget }}
 
+  {{ form.intellect_level.widget }}
+
+  {{ form.communication_verbal.widget }}
+  {{ form.communication_gestures.widget }}
+  {{ form.communication_telepathic.widget }}
+
   {{ form.abilities.widget }}
 
   {{ form.description.widget }}
 
   <div class="widget">
-    <input type="submit" class="btn" value="Создать"/>
+    <input type="submit" accesskey="s" class="btn" value="Создать"/>
   </div>
 
 </form>

@@ -20,7 +20,10 @@ from the_tale.accounts.achievements.relations import ACHIEVEMENT_TYPE
 
 from the_tale.game.prototypes import TimePrototype
 
-from the_tale.game.map.places.prototypes import PlacePrototype
+from the_tale.game import effects
+
+from the_tale.game.places import objects as places_objects
+from the_tale.game.places import relations as places_relations
 
 from the_tale.forum.prototypes import ThreadPrototype, PostPrototype, SubCategoryPrototype
 from the_tale.forum.models import MARKUP_METHOD
@@ -114,6 +117,8 @@ class BillPrototype(BasePrototype):
                 return u'исправлен закон'
             else:
                 return u'выдвинут закон'
+        if self.state.is_STOPPED:
+            return u'закон утратил смысл'
         raise exceptions.UnknownLastEventTextError(bill_id=self.id)
 
     @classmethod
@@ -133,7 +138,7 @@ class BillPrototype(BasePrototype):
         place_allowed = False
 
         for actor in self.data.actors:
-            if isinstance(actor, PlacePrototype):
+            if isinstance(actor, places_objects.Place):
 
                 if actor.is_new:
                     return True
@@ -147,7 +152,31 @@ class BillPrototype(BasePrototype):
 
         return True
 
-    @transaction.atomic
+    def has_meaning(self):
+        return self.data.has_meaning()
+
+    def stop(self):
+        if not self.state.is_VOTING:
+            raise exceptions.StopBillInWrongStateError(bill_id=self.id)
+
+        results_text = u'Итоги голосования: %d «за», %d «против» (итого %.1f%% «за»), %d «воздержалось».' % (self.votes_for,
+                                                                                                             self.votes_against,
+                                                                                                             round(self.votes_for_percents, 3)*100,
+                                                                                                             self.votes_refrained)
+
+        with transaction.atomic():
+            self._model.voting_end_at = datetime.datetime.now()
+            self.state = BILL_STATE.STOPPED
+            self.save()
+
+            PostPrototype.create(ThreadPrototype(self._model.forum_thread),
+                                 get_system_user(),
+                                 u'Законопроект потерял смысл, голосование остановлено. %s' % results_text,
+                                 technical=True)
+
+            signals.bill_stopped.send(self.__class__, bill=self)
+
+
     def apply(self):
         if not self.state.is_VOTING:
             raise exceptions.ApplyBillInWrongStateError(bill_id=self.id)
@@ -171,34 +200,38 @@ class BillPrototype(BasePrototype):
 
         self.applyed_at_turn = TimePrototype.get_current_turn_number()
 
-        if self.is_percents_barier_not_passed:
-            self.state = BILL_STATE.REJECTED
-            self.save()
+        with transaction.atomic():
+
+            if self.is_percents_barier_not_passed:
+                self.state = BILL_STATE.REJECTED
+                self.save()
+
+                PostPrototype.create(ThreadPrototype(self._model.forum_thread),
+                                     get_system_user(),
+                                     u'Законопроект отклонён.\n\n%s' % results_text,
+                                     technical=True)
+
+                signals.bill_processed.send(self.__class__, bill=self)
+                return False
+
+            self.data.apply(self)
+
+            self.state = BILL_STATE.ACCEPTED
+
+            with achievements_storage.verify(type=ACHIEVEMENT_TYPE.POLITICS_ACCEPTED_BILLS, object=self.owner):
+                self.save()
 
             PostPrototype.create(ThreadPrototype(self._model.forum_thread),
                                  get_system_user(),
-                                 u'Законопроект отклонён.\n\n%s' % results_text,
+                                 u'Законопроект принят. Изменения вступят в силу в ближайшее время.\n\n%s' % results_text,
                                  technical=True)
 
-            signals.bill_processed.send(self.__class__, bill=self)
-            return False
 
-        self.data.apply(self)
-
-        self.state = BILL_STATE.ACCEPTED
-
-        with achievements_storage.verify(type=ACHIEVEMENT_TYPE.POLITICS_ACCEPTED_BILLS, object=self.owner):
-            self.save()
-
-        PostPrototype.create(ThreadPrototype(self._model.forum_thread),
-                             get_system_user(),
-                             u'Законопроект принят. Изменения вступят в силу в ближайшее время.\n\n%s' % results_text,
-                             technical=True)
-
-
-        for actor in self.data.actors:
-            if isinstance(actor, PlacePrototype):
-                actor.stability_modifiers.append((u'закон №%d' % self.id, -self.type.stability))
+            for actor in self.data.actors:
+                if isinstance(actor, places_objects.Place):
+                    actor.effects.add(effects.Effect(name=u'закон №{}'.format(self.id),
+                                                     attribute=places_relations.ATTRIBUTE.STABILITY,
+                                                     value=-self.type.stability))
 
         logic.initiate_actual_bills_update(self._model.owner_id)
 
@@ -365,12 +398,14 @@ class BillPrototype(BasePrototype):
         signals.bill_removed.send(self.__class__, bill=self)
 
     @classmethod
-    def get_applicable_bills(cls):
-        bills_models = cls._model_class.objects.filter(state=BILL_STATE.VOTING,
-                                                       approved_by_moderator=True,
-                                                       updated_at__lt=datetime.datetime.now() - datetime.timedelta(seconds=bills_settings.BILL_LIVE_TIME))
-        return [cls(model=model) for model in bills_models]
+    def get_applicable_bills_ids(cls):
+        return cls._model_class.objects.filter(state=BILL_STATE.VOTING,
+                                               approved_by_moderator=True,
+                                               updated_at__lt=datetime.datetime.now() - datetime.timedelta(seconds=bills_settings.BILL_LIVE_TIME)).values_list('id', flat=True)
 
+    @classmethod
+    def get_active_bills_ids(cls):
+        return cls._model_class.objects.filter(state=BILL_STATE.VOTING).values_list('id', flat=True)
 
 
 class ActorPrototype(BasePrototype):
@@ -386,19 +421,17 @@ class ActorPrototype(BasePrototype):
     def create(cls, bill, place=None):
 
         model = Actor.objects.create(bill=bill._model,
-                                     place=place._model if place else None)
+                                     place_id=place.id if place else None)
         return cls(model)
 
     @classmethod
     @transaction.atomic
     def update_actors(cls, bill, actors):
-        from the_tale.game.map.places.prototypes import PlacePrototype
-
         Actor.objects.filter(bill_id=bill.id).delete()
 
         for actor in actors:
             cls.create(bill,
-                       place=actor if isinstance(actor, PlacePrototype) else None)
+                       place=actor if isinstance(actor, places_objects.Place) else None)
 
 
     def save(self):

@@ -9,20 +9,18 @@ from the_tale.common.utils import views as utils_views
 
 from the_tale.accounts import views as accounts_views
 
-from the_tale.game import relations as game_relations
-
-from the_tale.game.heroes.prototypes import HeroPrototype
-
-from the_tale.game.persons import relations as persons_relations
+from the_tale.game.chronicle import prototypes as chronicle_prototypes
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.game.map.storage import map_info_storage
 from the_tale.game.map.conf import map_settings
 
-from the_tale.game.map.places import storage as places_storage
-from the_tale.game.map.places import prototypes as places_prototypes
-from the_tale.game.map.places import logic as places_logic
-from the_tale.game.map.places import relations as places_relations
+from the_tale.game.places import storage as places_storage
+from the_tale.game.places import info as places_info
 
+from the_tale.game.abilities.relations import ABILITY_TYPE
+
+from . import conf
 
 
 ########################################
@@ -69,46 +67,26 @@ def cell_info(context):
     if nearest_place:
         nearest_place_name = nearest_place.utg_name.form(utg_words.Properties(utg_relations.CASE.GENITIVE))
 
-    place = places_storage.places_storage.get_by_coordinates(x, y)
+    place = places_storage.places.get_by_coordinates(x, y)
 
-    place_modifiers = None
-
-    chronicle_records = []
     exchanges = []
-
-    place_info = places_logic.place_info(place) if place is not None else None
-        # place_modifiers = place.modifiers
-
-        # chronicle_records = RecordPrototype.get_last_actor_records(place, places_conf.places_settings.CHRONICLE_RECORDS_NUMBER)
-
-        # for exchange in places_storage.resource_exchange_storage.get_exchanges_for_place(place):
-        #     resource_1, resource_2, place_2 = exchange.get_resources_for_place(place)
-        #     exchanges.append((resource_1, resource_2, place_2, exchange.bill))
 
     terrain_points = []
 
-    building = places_storage.buildings_storage.get_by_coordinates(x, y)
-
-
+    building = places_storage.buildings.get_by_coordinates(x, y)
 
     return dext_views.Page('map/cell_info.html',
-                           content={'place_info': place_info,
-                                    'CITY_MODIFIERS': places_relations.CITY_MODIFIERS,
-                                    'PERSON_TYPE': persons_relations.PERSON_TYPE,
-                                    'RACE': game_relations.RACE,
-                                    'GENDER': game_relations.GENDER,
-                                    'HABIT_TYPE': game_relations.HABIT_TYPE,
-
+                           content={'place': place,
                                     'building': building,
-                                    'place_modifiers': place_modifiers,
+                                    'place_bills': places_info.place_info_bills(place) if place else None,
+                                    'place_chronicle': chronicle_prototypes.chronicle_info(place, conf.map_settings.CHRONICLE_RECORDS_NUMBER) if place else None,
                                     'exchanges': exchanges,
                                     'cell': cell,
                                     'terrain': terrain,
                                     'nearest_place_name': nearest_place_name,
-                                    'PlaceParametersDescription': places_prototypes.PlaceParametersDescription,
                                     'x': x,
                                     'y': y,
                                     'terrain_points': terrain_points,
-                                    'chronicle_records': chronicle_records,
-                                    'hero': HeroPrototype.get_by_account_id(context.account.id) if context.account.is_authenticated() else None,
-                                    'resource': context.resource} )
+                                    'hero': heroes_logic.load_hero(account_id=context.account.id) if context.account.is_authenticated() else None,
+                                    'resource': context.resource,
+                                    'ABILITY_TYPE': ABILITY_TYPE})

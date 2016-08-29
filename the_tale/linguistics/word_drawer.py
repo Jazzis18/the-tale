@@ -5,11 +5,13 @@ from dext.forms import forms
 
 from utg import words
 from utg import data as utg_data
+from utg import restrictions as utg_restrictions
 from utg import relations as utg_relations
 from utg import logic as utg_logic
 
-from the_tale.linguistics import relations
-from the_tale.linguistics.forms import WORD_FIELD_PREFIX
+from . import relations
+from . import logic
+from .forms import WORD_FIELD_PREFIX
 
 
 def get_best_base(word_type):
@@ -68,14 +70,12 @@ class Leaf(object):
         key.update(self.key)
         key = [key.get(relation) for relation in self.type.schema]
 
-        utg_logic._populate_key_with_presets(key, self.type.schema)
-
         return tuple(key)
 
     def choose_base(self, base):
         real_properties = tuple(property
                                 for property in base.schema
-                                if all(property not in utg_data.RESTRICTIONS[self.type].get(key, []) for key in self.key.values() if key is not None))
+                                if all(property not in utg_restrictions.RESTRICTIONS[self.type].get(key, []) for key in self.key.values() if key is not None))
         return relations.WORD_BLOCK_BASE.index_schema[real_properties]
 
 
@@ -141,13 +141,9 @@ class ShowDrawer(BaseDrawer):
     def get_property(self, property):
 
         if property in self.type.properties:
-            if self.word.properties.is_specified(property):
+            if self.word.properties.is_specified(property) or self.type.properties[property]:
                 return self.get_property_html(utg_relations.PROPERTY_TYPE.index_relation[property].text,
                                               self.word.properties.get(property).text,
-                                              self.other_version.properties.get(property).text if self.other_version else None)
-            elif self.type.properties[property]:
-                return self.get_property_html(utg_relations.PROPERTY_TYPE.index_relation[property].text,
-                                              u'<strong style="color: red;">необходимо указать</strong>',
                                               self.other_version.properties.get(property).text if self.other_version else None)
             else:
                 alternative = None
@@ -172,6 +168,12 @@ class FormFieldDrawer(BaseDrawer):
         return forms.HTML_WIDGET_WRAPPER % {'content': content}
 
     def get_form(self, key):
+
+        # that condition exclude synonym forms (inanimate & animate) for adjective and participle forms
+        # if there are more conditions appear, it will be better to seprate them in separate mechanism
+        if logic.key_is_synomym(key):
+            return u''
+
         cache = utg_data.WORDS_CACHES[self.type]
 
         if key not in cache:

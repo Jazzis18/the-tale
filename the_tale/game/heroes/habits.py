@@ -5,20 +5,20 @@ import random
 from questgen.relations import OPTION_MARKERS as QUEST_OPTION_MARKERS
 
 from the_tale.game.mobs.storage import mobs_storage
-from the_tale.game.mobs.relations import MOB_TYPE
 
 from the_tale.game.balance import constants as c
 
 from the_tale.game.actions.relations import ACTION_EVENT
 
 from the_tale.game.habits import HabitBase
-from the_tale.game.relations import HABIT_TYPE
+from the_tale.game import relations as game_relations
 
 from the_tale.accounts.achievements.storage import achievements_storage
 from the_tale.accounts.achievements.relations import ACHIEVEMENT_TYPE
 
 
 class Habit(HabitBase):
+    __slots__ = ()
 
     @property
     def _real_interval(self):
@@ -47,8 +47,9 @@ class Habit(HabitBase):
 
 
 class Honor(Habit):
+    __slots__ = ()
 
-    TYPE = HABIT_TYPE.HONOR
+    TYPE = game_relations.HABIT_TYPE.HONOR
 
     def change(self, delta):
         with achievements_storage.verify(type=ACHIEVEMENT_TYPE.HABITS_HONOR, object=self.owner):
@@ -106,8 +107,9 @@ class Honor(Habit):
 
 
 class Peacefulness(Habit):
+    __slots__ = ()
 
-    TYPE = HABIT_TYPE.PEACEFULNESS
+    TYPE = game_relations.HABIT_TYPE.PEACEFULNESS
 
     def change(self, delta):
         with achievements_storage.verify(type=ACHIEVEMENT_TYPE.HABITS_PEACEFULNESS, object=self.owner):
@@ -116,10 +118,10 @@ class Peacefulness(Habit):
     def modify_attribute(self, modifier, value):
 
         if modifier.is_FRIEND_QUEST_PRIORITY and self._real_interval.is_RIGHT_3:
-            return value * c.HABIT_QUEST_PRIORITY_MODIFIER
+            return value + c.HABIT_QUEST_PRIORITY_MODIFIER
 
         if modifier.is_ENEMY_QUEST_PRIORITY and self._real_interval.is_LEFT_3:
-            return value * c.HABIT_QUEST_PRIORITY_MODIFIER
+            return value + c.HABIT_QUEST_PRIORITY_MODIFIER
 
         if modifier.is_LOOT_PROBABILITY and (self._real_interval.is_RIGHT_2 or self._real_interval.is_RIGHT_3):
             return value * c.HABIT_LOOT_PROBABILITY_MODIFIER
@@ -157,7 +159,7 @@ class Peacefulness(Habit):
             return random.uniform(0, 1) < c.EXP_FOR_KILL_PROBABILITY
 
         if modifier.is_PEACEFULL_BATTLE and self._real_interval.is_RIGHT_3:
-            return random.uniform(0, 1) < c.PEACEFULL_BATTLE_PROBABILITY / mobs_storage.mob_type_fraction(MOB_TYPE.CIVILIZED)
+            return random.uniform(0, 1) < c.PEACEFULL_BATTLE_PROBABILITY / mobs_storage.mob_type_fraction(game_relations.BEING_TYPE.CIVILIZED)
 
         return False
 

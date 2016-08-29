@@ -30,6 +30,15 @@ jQuery(document).ready( function(e) {
   {{ form.type.widget }}
   {{ form.archetype.widget }}
 
+  {{ form.is_mercenary.widget }}
+  {{ form.is_eatable.widget }}
+
+  {{ form.intellect_level.widget }}
+
+  {{ form.communication_verbal.widget }}
+  {{ form.communication_gestures.widget }}
+  {{ form.communication_telepathic.widget }}
+
   {{ form.global_action_probability.widget }}
 
   <div class="terrain-and-abilities">
@@ -45,7 +54,7 @@ jQuery(document).ready( function(e) {
   {{ form.description.widget }}
 
   <div class="widget">
-    <input type="submit" class="btn" value="Создать"/>
+    <input type="submit" accesskey="s" class="btn" value="Создать"/>
   </div>
 
 </form>

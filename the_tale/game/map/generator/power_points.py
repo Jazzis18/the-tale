@@ -6,10 +6,13 @@ from deworld import power_points, layers, normalizers
 from the_tale.game.prototypes import TimePrototype, MONTHS
 from the_tale.game.relations import RACE
 
-from the_tale.game.persons.prototypes import PersonPrototype
+from the_tale.game.persons import objects as persons_objects
+from the_tale.game.persons import storage as persons_storage
 
-from the_tale.game.map.places.prototypes import PlacePrototype, BuildingPrototype
-from the_tale.game.map.places.storage import places_storage, buildings_storage
+from the_tale.game.places.prototypes import BuildingPrototype
+from the_tale.game.places import objects as places_objects
+from the_tale.game.places import storage as places_storage
+
 from the_tale.game.map import exceptions
 from the_tale.game.map.conf import map_settings
 
@@ -44,16 +47,16 @@ def _point_circle_height(obj, borders, normalizer, power_percent):
 class MapObject(object):
 
     def __init__(self, game_object, suffix=''):
-        if isinstance(game_object, PlacePrototype):
+        if isinstance(game_object, places_objects.Place):
             self.uid = 'place_%d_%s' % (game_object.id, suffix)
             self.x = game_object.x
             self.y = game_object.y
-            self.r = game_object.terrain_change_power
-        elif isinstance(game_object, PersonPrototype):
+            self.r = game_object.attrs.terrain_radius
+        elif isinstance(game_object, persons_objects.Person):
             self.uid = 'person_%d_%s' % (game_object.id, suffix)
             self.x = game_object.place.x
             self.y = game_object.place.y
-            self.r = game_object.place.terrain_change_power
+            self.r = game_object.place.attrs.terrain_radius
         elif isinstance(game_object, BuildingPrototype):
             self.uid = 'building_%d_%s' % (game_object.id, suffix)
             self.x = game_object.x
@@ -69,7 +72,7 @@ def _point_arrow_height(obj, borders, length_normalizer, width_normalizer, power
 
     distances = []
 
-    for other_place in places_storage.all():
+    for other_place in places_storage.places.all():
         if obj.id != other_place.id:
             distances.append((math.hypot(obj.x - other_place.x, obj.y - other_place.y), other_place))
 
@@ -233,15 +236,11 @@ def get_building_power_points(building): # pylint: disable=R0912,R0915
         points.append(_point_circle_temperature(MapObject(building), power=0.1, normalizer=normalizers.linear, power_percent=1.0))
     elif building.type.is_GUILDHALL:
         points.append(_point_circle_soil(MapObject(building), power=-0.01, normalizer=normalizers.linear, power_percent=1.0))
-        # points.append(_point_circle_height(MapObject(building), borders=(-0.5, 0.5), normalizer=normalizers.linear_2, power_percent=1.0))
     elif building.type.is_BUREAU:
         points.append(_point_circle_soil(MapObject(building), power=-0.01, normalizer=normalizers.linear, power_percent=1.0))
-        # points.append(_point_circle_height(MapObject(building), borders=(-0.5, 0.5), normalizer=normalizers.linear_2, power_percent=1.0))
     elif building.type.is_MANOR:
         points.append(_point_circle_soil(MapObject(building), power=-0.01, normalizer=normalizers.linear, power_percent=1.0))
-        # points.append(_point_circle_height(MapObject(building), borders=(0.2, 0.5), normalizer=normalizers.linear_2, power_percent=1.0))
     elif building.type.is_SCENE:
-        # points.append(_point_circle_height(MapObject(building), borders=(0.2, 0.4), normalizer=normalizers.linear_2, power_percent=1.0))
         points.append(_point_circle_vegetation(MapObject(building), power=(0.0, -0.1), normalizer=normalizers.linear_2, power_percent=1.0))
     elif building.type.is_MEWS:
         points.append(_point_circle_height(MapObject(building), borders=(-0.2, 0.2), normalizer=normalizers.linear_2, power_percent=1.0))
@@ -257,15 +256,11 @@ def get_building_power_points(building): # pylint: disable=R0912,R0915
     return points
 
 
+def get_person_power_points(person):
+    return get_object_race_points(MapObject(person), person.race, person.attrs.terrain_power)
+
 def get_place_race_power_points(place, race):
-
-    place_power = place.total_persons_power
-
-    if place_power < 0.1:
-        return []
-
     power_percent = place.races.get_race_percents(race) * 0.5
-
     return get_object_race_points(MapObject(place, suffix='race_%s' % race.name), race, power_percent)
 
 
@@ -320,12 +315,15 @@ def get_power_points():
               _default_vegetation_points(),
               _default_soil_points()]
 
-    for place in places_storage.all():
+    for place in places_storage.places.all():
         points.extend(get_place_power_points(place))
         for race in RACE.records:
             points.extend(get_place_race_power_points(place, race))
 
-    for building in buildings_storage.all():
+    for building in places_storage.buildings.all():
         points.extend(get_building_power_points(building))
+
+    for person in persons_storage.persons.all():
+        points.extend(get_person_power_points(person))
 
     return points

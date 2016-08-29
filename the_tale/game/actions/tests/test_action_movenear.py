@@ -9,11 +9,11 @@ from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.game.logic_storage import LogicStorage
 
 from the_tale.game.balance import constants as c
-from the_tale.game.balance import formulas as f
-from the_tale.game.balance import enums as e
 
 from the_tale.game.companions import storage as companions_storage
 from the_tale.game.companions import logic as companions_logic
+
+from the_tale.game.heroes import relations as heroes_relations
 
 from the_tale.game.logic import create_test_map
 from the_tale.game.actions import prototypes
@@ -21,6 +21,8 @@ from the_tale.game.prototypes import TimePrototype
 
 from the_tale.game.map.relations import TERRAIN
 from the_tale.game.map.storage import map_info_storage
+
+from the_tale.game.places import logic as places_logic
 
 
 class MoveNearActionTest(testcase.TestCase):
@@ -97,7 +99,7 @@ class MoveNearActionTest(testcase.TestCase):
         self.assertEqual(coordinates, set([(self.p1.x, self.p1.y)]))
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
     def test_processed(self):
 
         current_time = TimePrototype.get_current_time()
@@ -117,7 +119,7 @@ class MoveNearActionTest(testcase.TestCase):
         self.storage._test_save()
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
     def test_not_ready(self):
         self.storage.process_turn(continue_steps_if_needed=False)
         self.assertEqual(len(self.hero.actions.actions_list), 2)
@@ -125,11 +127,11 @@ class MoveNearActionTest(testcase.TestCase):
         self.assertTrue(self.hero.position.is_walking or self.hero.position.place) # can end in start place
         self.storage._test_save()
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.subroad_len', lambda self: 1)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.position.Position.subroad_len', lambda self: 1)
     def test_modify_speed(self):
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.modify_move_speed',
+        with mock.patch('the_tale.game.heroes.objects.Hero.modify_move_speed',
                         mock.Mock(return_value=self.hero.move_speed)) as speed_modifier_call_counter:
             self.storage.process_turn(continue_steps_if_needed=False)
 
@@ -167,9 +169,9 @@ class MoveNearActionTest(testcase.TestCase):
         self.assertTrue(self.hero.position.is_walking or self.hero.position.place)  # can end in start place
 
         prototypes.ActionMoveNearPlacePrototype.create(hero=self.hero, place=self.p1, back=True)
-        self.p1._model.x = self.p1.x + 1
-        self.p1._model.y = self.p1.y + 1
-        self.p1.save()
+        self.p1.x = self.p1.x + 1
+        self.p1.y = self.p1.y + 1
+        places_logic.save_place(self.p1)
 
         while self.hero.position.place is None or self.hero.position.place.id != self.p1.id:
             self.storage.process_turn(continue_steps_if_needed=False)
@@ -191,16 +193,15 @@ class MoveNearActionTest(testcase.TestCase):
 
         self.storage._test_save()
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: True)
     def test_battle(self):
         self.storage.process_turn(continue_steps_if_needed=False)
         self.assertEqual(self.hero.actions.current_action.TYPE, prototypes.ActionBattlePvE1x1Prototype.TYPE)
         self.storage._test_save()
 
     def test_regenerate_energy_on_move(self):
-        self.hero.preferences.set_energy_regeneration_type(e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY)
-        self.hero.last_energy_regeneration_at_turn -= max([f.angel_energy_regeneration_delay(energy_regeneration_type)
-                                                           for energy_regeneration_type in c.ANGEL_ENERGY_REGENERATION_STEPS.keys()])
+        self.hero.preferences.set_energy_regeneration_type(heroes_relations.ENERGY_REGENERATION.PRAY)
+        self.hero.last_energy_regeneration_at_turn -= max(zip(*heroes_relations.ENERGY_REGENERATION.select('period'))[0])
         self.action_move.state = self.action_move.STATE.MOVING
 
         self.storage.process_turn(continue_steps_if_needed=False)
@@ -210,9 +211,8 @@ class MoveNearActionTest(testcase.TestCase):
         self.storage._test_save()
 
     def test_not_regenerate_energy_on_move_for_sacrifice(self):
-        self.hero.preferences.set_energy_regeneration_type(e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE)
-        self.hero.last_energy_regeneration_at_turn -= max([f.angel_energy_regeneration_delay(energy_regeneration_type)
-                                                           for energy_regeneration_type in c.ANGEL_ENERGY_REGENERATION_STEPS.keys()])
+        self.hero.preferences.set_energy_regeneration_type(heroes_relations.ENERGY_REGENERATION.SACRIFICE)
+        self.hero.last_energy_regeneration_at_turn -= max(zip(*heroes_relations.ENERGY_REGENERATION.select('period'))[0])
         self.action_move.state = self.action_move.STATE.MOVING
 
         self.storage.process_turn(continue_steps_if_needed=False)
@@ -223,9 +223,8 @@ class MoveNearActionTest(testcase.TestCase):
 
 
     def test_regenerate_energy_after_battle_for_sacrifice(self):
-        self.hero.preferences.set_energy_regeneration_type(e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE)
-        self.hero.last_energy_regeneration_at_turn -= max([f.angel_energy_regeneration_delay(energy_regeneration_type)
-                                                           for energy_regeneration_type in c.ANGEL_ENERGY_REGENERATION_STEPS.keys()])
+        self.hero.preferences.set_energy_regeneration_type(heroes_relations.ENERGY_REGENERATION.SACRIFICE)
+        self.hero.last_energy_regeneration_at_turn -= max(zip(*heroes_relations.ENERGY_REGENERATION.select('period'))[0])
         self.action_move.state = self.action_move.STATE.BATTLE
 
         self.storage.process_turn(continue_steps_if_needed=False)
@@ -263,8 +262,8 @@ class MoveNearActionTest(testcase.TestCase):
         self.assertEqual(self.hero.actions.current_action.state, prototypes.ActionMoveNearPlacePrototype.STATE.HEALING_COMPANION)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_companion_say_wisdom', lambda hero: True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_companion_say_wisdom', lambda hero: True)
     @mock.patch('the_tale.game.balance.constants.COMPANIONS_EXP_PER_MOVE_PROBABILITY', 1.0)
     def test_companion_say_wisdom(self):
         companion_record = companions_storage.companions.enabled_companions().next()
@@ -277,7 +276,7 @@ class MoveNearActionTest(testcase.TestCase):
         with self.check_delta(lambda: self.hero.experience, c.COMPANIONS_EXP_PER_MOVE_GET_EXP):
             self.storage.process_turn(continue_steps_if_needed=False)
 
-        self.assertTrue(self.hero.messages.messages[-1].key.is_COMPANIONS_SAY_WISDOM)
+        self.assertTrue(self.hero.journal.messages[-1].key.is_COMPANIONS_SAY_WISDOM)
 
         self.storage._test_save()
 
@@ -291,7 +290,7 @@ class MoveNearActionTest(testcase.TestCase):
         self.storage._test_save()
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPositionPrototype.is_battle_start_needed', lambda self: False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_battle_start_needed', lambda self: False)
     def test_stop_when_quest_required_replane(self):
         while self.action_move.state != prototypes.ActionMoveNearPlacePrototype.STATE.MOVING:
             self.storage.process_turn(continue_steps_if_needed=False)

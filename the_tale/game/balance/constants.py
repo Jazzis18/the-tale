@@ -1,7 +1,6 @@
 # coding: utf-8
 import math
 
-from the_tale.game.balance import enums as e
 from the_tale.game.balance import helpers as h
 
 TIME_TO_LVL_DELTA = float(7) # разница во времени получения двух соседних уровней
@@ -24,11 +23,18 @@ EQUIP_SLOTS_NUMBER = int(11) # количество слотов экипиро�
 
 # за скорость получения артефактов принимаем скорость получения их из лута
 # остальные способы получения (покупка, квесты) считаем флуктуациями
-ARTIFACTS_LOOT_PER_DAY = float(1.0) # количество новых артефактов, в реальный день
-ARTIFACT_FOR_QUEST_PROBABILITY = float(0.1) # вероятность получить артефакт в награда за квест
+ARTIFACTS_LOOT_PER_DAY = float(2.0) # количество новых артефактов, в реальный день
+ARTIFACT_FOR_QUEST_PROBABILITY = float(0.2) # вероятность получить артефакт в награда за квест
 
-# количество поломок артефактов в день, расчитывается так, чтобы за месяц в идеальном случае была обновлена вся экипировка
-ARTIFACTS_BREAKING_SPEED = float(EQUIP_SLOTS_NUMBER / 30.0)
+# Доли лута и артефактов в доходах героя. В артефакты влючены и награды за задания.
+INCOME_LOOT_FRACTION = float(0.6)
+INCOME_ARTIFACTS_FRACTION = float(1.0 - INCOME_LOOT_FRACTION)
+
+# магическое число — ожидаемое количество выполненных героем квестов в день
+EXPECTED_QUESTS_IN_DAY = float(2.0)
+
+# количество поломок артефактов в день, расчитывается так, чтобы за 3 недели в идеальном случае была обновлена вся экипировка
+ARTIFACTS_BREAKING_SPEED = float(EQUIP_SLOTS_NUMBER / (3*7.0))
 
 EQUIPMENT_BREAK_FRACTION = float(0.5) # доля артифактов в экипировке, которые могут сломаться
 NORMAL_SLOT_REPAIR_PRIORITY = float(1.0)  # приоритет починки обычного слота
@@ -80,8 +86,6 @@ NORMAL_LOOT_COST = float(1) #стоимость разной добычи на �
 
 MAX_BAG_SIZE = int(12) # максимальный размер рюкзака героя
 BAG_SIZE_TO_SELL_LOOT_FRACTION = float(0.33) # процент заполненности рюкзака, после которого герой начнёт продавать вещи
-
-SELL_ARTIFACT_PRICE_MULTIPLIER = int(10) # множитель стоимости артефакта от стоимости лута
 
 # относительные размеры различных трат
 
@@ -198,20 +202,9 @@ ANGEL_FREE_ENERGY_CHARGE_CRIT = int(20)# количество бонусной �
 ANGEL_ENERGY_REGENERATION_TIME = float(0.5) # раз в сколько часов регенерируем
 ANGEL_ENERGY_REGENERATION_AMAUNT = int(1) # сколько восстанавливаем
 ANGEL_ENERGY_REGENERATION_PERIOD = int(ANGEL_ENERGY_REGENERATION_TIME * TURNS_IN_HOUR) # раз в сколько ходов
-_ANGEL_ENERGY_IN_DAY = int(24.0 / ANGEL_ENERGY_REGENERATION_TIME * ANGEL_ENERGY_REGENERATION_AMAUNT)
+ANGEL_ENERGY_IN_DAY = int(24.0 / ANGEL_ENERGY_REGENERATION_TIME * ANGEL_ENERGY_REGENERATION_AMAUNT)
 
-
-ANGEL_ENERGY_REGENERATION_DELAY = { e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY: 1,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE: 2,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.INCENSE: 4,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.SYMBOLS: 3,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.MEDITATION: 2 }
-
-ANGEL_ENERGY_REGENERATION_STEPS = { e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY: 3,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE: 5,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.INCENSE: 6,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.SYMBOLS: 4,
-                                    e.ANGEL_ENERGY_REGENERATION_TYPES.MEDITATION: 4 }
+ANGEL_ENERGY_REGENERATION_LENGTH = int(3) # сколько ходов будет идти ренерация единицы энергии
 
 ##########################
 # абилки ангела
@@ -219,6 +212,7 @@ ANGEL_ENERGY_REGENERATION_STEPS = { e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY: 3,
 
 ANGEL_HELP_COST = int(4)
 ANGEL_ARENA_COST = int(1)
+ANGEL_ARENA_QUIT_COST = int(0)
 ANGEL_DROP_ITEM_COST = int(3)
 
 ANGEL_HELP_HEAL_IF_LOWER_THEN = float(0.8) # можем лечить если здоровья меньше чем
@@ -229,7 +223,7 @@ ANGEL_HELP_LIGHTING_FRACTION = (float(0.25), float(0.5)) # (min, max) проце
 
 # считаем, что при эпической удачливости все использования будут давать опыт
 # и предполагаем, что можем разрешить (при такой удачливости), в день получать опыт как за такой же день
-ANGEL_HELP_EXPERIENCE = int(24.0 * EXP_PER_HOUR / (_ANGEL_ENERGY_IN_DAY / ANGEL_HELP_COST))
+ANGEL_HELP_EXPERIENCE = int(24.0 * EXP_PER_HOUR / (ANGEL_ENERGY_IN_DAY / ANGEL_HELP_COST))
 
 ANGEL_HELP_EXPERIENCE_DELTA = float(0.5)
 
@@ -299,8 +293,11 @@ QUESTS_SOCIAL_CONNECTIONS_FRACTION = float(0.05) # вероятность, чт�
 
 HERO_POWER_PER_DAY = int(100) # базовое количество влияния, которое герой 1-ого уровня производит в день на одного жителя задействованного в заданиях
 PERSON_POWER_PER_QUEST_FRACTION = float(0.33) # разброс влияния за задание
-PERSON_POWER_FOR_RANDOM_SPEND = int(200) # доля от стандартной величины..
-HERO_POWER_BONUS = float(0.01) # множитель для начисления влияния связанного с предпочтениями
+PERSON_POWER_FOR_RANDOM_SPEND = int(200)
+
+MINIMUM_CARD_POWER = int(HERO_POWER_PER_DAY / 5)
+
+NORMAL_JOB_LENGTH = int(10) # средняя длительность занятия мастера в днях
 
 ##########################
 # споособности
@@ -324,8 +321,8 @@ HABITS_BORDER = int(1000) # модуль максимального значен
 HABITS_RIGHT_BORDERS = [-700, -300, -100, 100, 300, 700, 1001] # правые границы черт
 HABITS_QUEST_ACTIVE_DELTA = float(20) # за выбор в задании игроком
 HABITS_QUEST_PASSIVE_DELTA = float(0.05 * HABITS_QUEST_ACTIVE_DELTA) # за неверный выбор героем
-HABITS_HELP_ABILITY_DELTA = float(float(HABITS_BORDER) / (60 * _ANGEL_ENERGY_IN_DAY / ANGEL_HELP_COST)) # за использование способности
-HABITS_ARENA_ABILITY_DELTA = float(float(HABITS_BORDER) / (60 * _ANGEL_ENERGY_IN_DAY / ANGEL_ARENA_COST)) # за использование способности
+HABITS_HELP_ABILITY_DELTA = float(float(HABITS_BORDER) / (60 * ANGEL_ENERGY_IN_DAY / ANGEL_HELP_COST)) # за использование способности
+HABITS_ARENA_ABILITY_DELTA = float(float(HABITS_BORDER) / (60 * ANGEL_ENERGY_IN_DAY / ANGEL_ARENA_COST)) # за использование способности
 
 HABITS_QUEST_ACTIVE_PREMIUM_MULTIPLIER = float(1.5) # бонус к начисляемому влиянию за выбор игрока для подписчиков
 
@@ -336,12 +333,12 @@ PICKED_UP_IN_ROAD_TELEPORT_LENGTH = ANGEL_HELP_TELEPORT_DISTANCE
 PICKED_UP_IN_ROAD_SPEED_BONUS = h.speed_from_safety(BATTLES_PER_TURN*KILL_BEFORE_BATTLE_PROBABILITY, BATTLES_PER_TURN)
 PICKED_UP_IN_ROAD_PROBABILITY = PICKED_UP_IN_ROAD_SPEED_BONUS / PICKED_UP_IN_ROAD_TELEPORT_LENGTH
 
-HABIT_QUEST_PRIORITY_MODIFIER = float(2) # модификатор приоритета выбора заданий от предпочтений
+HABIT_QUEST_PRIORITY_MODIFIER = float(1) # модификатор приоритета выбора заданий от предпочтений
 
 HONOR_POWER_BONUS_FRACTION = float(1.5) # бонус к влиянию для чести
 MONSTER_TYPE_BATTLE_CRIT_MAX_CHANCE = float(0.02) # вероятность крита по типу монстра, если все монстры этого типа
 
-HABIT_QUEST_REWARD_MAX_BONUS = float(0.25) # максимальный бонус к награде за задание при выборе, совпадающем с чертой
+HABIT_QUEST_REWARD_MAX_BONUS = float(1.0) # максимальный бонус к награде за задание при выборе, совпадающем с чертой
 HABIT_LOOT_PROBABILITY_MODIFIER = float(1.2) # бонус к вероятности получить любой лут
 
 PEACEFULL_BATTLE_PROBABILITY = float(0.01) # вероятность мирно разойтись с монстром, если все можно расходиться со всеми типами монстров
@@ -355,7 +352,7 @@ PEACEFULL_BATTLE_PROBABILITY = float(0.01) # вероятность мирно �
 # процент сохранённых ходов от первого удара
 _FIRST_STRIKE_TURNS_BONUS = (0.5 * BATTLES_BEFORE_HEAL) / ACTIONS_CYCLE_LENGTH # выигрываем полхода в каждой битве
 
-_HELPS_IN_TURN = (float(_ANGEL_ENERGY_IN_DAY) / ANGEL_HELP_COST) / 24 / TURNS_IN_HOUR
+_HELPS_IN_TURN = (float(ANGEL_ENERGY_IN_DAY) / ANGEL_HELP_COST) / 24 / TURNS_IN_HOUR
 
 # процент сохранённых ходов сражения, если только бьём молнией
 _BATTLE_TURNS_BONUS_FROM_ON_USE = (float(BATTLE_LENGTH) * (sum(ANGEL_HELP_LIGHTING_FRACTION)/2) + HEAL_LENGTH * (sum(ANGEL_HELP_HEAL_FRACTION)/2)) / 2
@@ -425,8 +422,27 @@ PVP_EFFECTIVENESS_STEP = float(10)
 PVP_EFFECTIVENESS_INITIAL = float(300)
 
 ###########################
-# типы городов
+# города
 ###########################
+
+PLACE_MIN_PERSONS = 2
+PLACE_MAX_PERSONS = 6
+
+PLACE_MIN_SAFETY = 0.05
+PLACE_MIN_TRANSPORT = 0.1
+PLACE_MIN_STABILITY = 0
+
+PLACE_MAX_SIZE = int(10)
+PLACE_MAX_ECONOMIC = int(10)
+PLACE_MAX_FRONTIER_ECONOMIC = int(5)
+
+PLACE_NEW_PLACE_LIVETIME = int(2*7*24*60*60)
+
+PLACE_POWER_HISTORY_WEEKS = int(6) # количество недель, которое хранится влияние города
+PLACE_POWER_HISTORY_LENGTH = int(PLACE_POWER_HISTORY_WEEKS*7*24*TURNS_IN_HOUR) # в ходах
+
+PLACE_POWER_RECALCULATE_STEPS = float(PLACE_POWER_HISTORY_LENGTH) / MAP_SYNC_TIME
+PLACE_POWER_REDUCE_FRACTION = float(math.pow(0.01, 1.0 / PLACE_POWER_RECALCULATE_STEPS))
 
 PLACE_TYPE_NECESSARY_BORDER = int(75)
 PLACE_TYPE_ENOUGH_BORDER = int(50)
@@ -450,10 +466,10 @@ PLACE_MAX_BILLS_NUMBER = int(3)
 PLACE_RACE_CHANGE_DELTA_IN_DAY = float(0.1)
 PLACE_RACE_CHANGE_DELTA = (PLACE_RACE_CHANGE_DELTA_IN_DAY * MAP_SYNC_TIME) / (24 * TURNS_IN_HOUR)
 
-PLACE_ADD_PERSON_DELAY = int(24 * TURNS_IN_HOUR) # раз в сколько ходов можно добавлять советника
+PLACE_STABILITY_UNIT = float(0.1) # базовая единица изменения стабильности
 
 # считаем что штраф от одного закона должен восстанавливаться за неделю
-PLACE_STABILITY_RECOVER_SPEED = float(0.1 / (7*24)) # стабильности в час
+PLACE_STABILITY_RECOVER_SPEED = float(PLACE_STABILITY_UNIT / (7*24)) # стабильности в час
 
 PLACE_STABILITY_MAX_PRODUCTION_PENALTY = float(-PLACE_GOODS_BONUS * 2)
 PLACE_STABILITY_MAX_SAFETY_PENALTY = float(-0.25)
@@ -467,11 +483,28 @@ PLACE_HABITS_CHANGE_SPEED_MAXIMUM = float(10)
 PLACE_HABITS_CHANGE_SPEED_MAXIMUM_PENALTY = float(10)
 PLACE_HABITS_EVENT_PROBABILITY = float(0.025)
 
+PLACE_JOB_EFFECT_FRACTION = float(0.2)
+
+JOB_PRODUCTION_BONUS = int(PLACE_GOODS_BONUS * PLACE_JOB_EFFECT_FRACTION)
+JOB_SAFETY_BONUS = float(PLACE_SAFETY_FROM_BEST_PERSON * PLACE_JOB_EFFECT_FRACTION)
+JOB_TRANSPORT_BONUS = float(PLACE_TRANSPORT_FROM_BEST_PERSON * PLACE_JOB_EFFECT_FRACTION)
+JOB_FREEDOM_BONUS = float(PLACE_FREEDOM_FROM_BEST_PERSON * PLACE_JOB_EFFECT_FRACTION)
+JOB_STABILITY_BONUS = float(PLACE_STABILITY_UNIT * PLACE_JOB_EFFECT_FRACTION)
+
+###########################
+# мастера
+###########################
+
+PERSON_MOVE_DELAY_IN_WEEKS = 2
+PERSON_MOVE_DELAY = int(TURNS_IN_HOUR * 24 * 7 * PERSON_MOVE_DELAY_IN_WEEKS) # минимальная задержка между переездами Мастера
+
 ###########################
 # здания
 ###########################
 
 BUILDING_MASTERY_BONUS = float(0.15)
+
+BUILDING_POSITION_RADIUS = int(2)
 
 # на починку зданий игроки тратят энергию
 # желательно, чтобы для единственного здания в городе эффект единичной траты энергии был заметен
@@ -485,14 +518,14 @@ BUILDING_FULL_REPAIR_ENERGY_COST = int(BUILDING_FULL_DESTRUCTION_TIME * ANGEL_EN
 BUILDING_AMORTIZATION_MODIFIER = float(1.5) # цена ремонта здания зависит от количества зданий в городе и равно <цена>*BULDING_AMORTIZATION_MODIFIER^<количество зданий - 1>
 BUILDING_WORKERS_ENERGY_COST = int(3) # цена вызова одного рабочего
 
-BUILDING_PERSON_POWER_MULTIPLIER = float(1.1)
+BUILDING_PERSON_POWER_BONUS = float(0.25)
 BUILDING_TERRAIN_POWER_MULTIPLIER = float(0.5) # building terrain power is percent from city power
 
 ###########################
 # Карты
 ###########################
 
-CARDS_HELP_COUNT_TO_NEW_CARD = int(1.5 * _ANGEL_ENERGY_IN_DAY / ANGEL_HELP_COST)
+CARDS_HELP_COUNT_TO_NEW_CARD = int(1.5 * ANGEL_ENERGY_IN_DAY / ANGEL_HELP_COST)
 CARDS_COMBINE_TO_UP_RARITY = 3
 
 

@@ -8,8 +8,6 @@ from questgen.knowledge_base import KnowledgeBase
 from questgen import facts
 from questgen import relations as questgen_relations
 
-from dext.common.utils import s11n
-
 from the_tale.common.utils import testcase
 
 from the_tale.accounts.logic import register_user
@@ -23,13 +21,12 @@ from the_tale.game.persons import logic as persons_logic
 
 from the_tale.game.mobs.storage import mobs_storage
 
-from the_tale.game.map.roads.storage import waymarks_storage
+from the_tale.game.roads.storage import waymarks_storage
 
 from the_tale.game.heroes.relations import EQUIPMENT_SLOT
 
 from the_tale.game.quests import uids
 from the_tale.game.quests import logic
-from the_tale.game.quests import relations
 
 
 class LogicTestsBase(testcase.TestCase):
@@ -87,7 +84,7 @@ class LogicTestsBase(testcase.TestCase):
 class HeroQuestInfoTests(LogicTestsBase):
 
     def test_create_hero_info__all_properties(self):
-        self.hero._model.level = 11
+        self.hero.level = 11
 
         self.hero.position.set_place(self.place_1)
 
@@ -117,9 +114,9 @@ class HeroQuestInfoTests(LogicTestsBase):
         self.hero.quests.update_history(quest_type='hunt', turn_number=0)
 
         with contextlib.nested(
-                mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_first_quest_path_required', is_first_quest_path_required),
-                mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_short_quest_path_required', is_short_quest_path_required),
-                mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.prefered_quest_markers', lambda hero: prefered_quest_markers) ):
+                mock.patch('the_tale.game.heroes.objects.Hero.is_first_quest_path_required', is_first_quest_path_required),
+                mock.patch('the_tale.game.heroes.objects.Hero.is_short_quest_path_required', is_short_quest_path_required),
+                mock.patch('the_tale.game.heroes.objects.Hero.prefered_quest_markers', lambda hero: prefered_quest_markers) ):
             hero_info = logic.create_hero_info(self.hero)
 
         self.assertEqual(hero_info.id, self.hero.id)
@@ -348,8 +345,8 @@ class SetupPersonsTest(LogicTestsBase):
         logic.setup_social_connections(self.knowledge_base)
 
         self.check_facts(places=[logic.fact_place(self.place_1), logic.fact_place(self.place_2)],
-                         persons=[logic.fact_person(person) for person in persons_storage.persons_storage.all() if person.place_id != self.place_3.id],
-                         locations=[logic.fact_located_in(person) for person in persons_storage.persons_storage.all() if person.place_id != self.place_3.id],
+                         persons=[logic.fact_person(person) for person in persons_storage.persons.all() if person.place_id != self.place_3.id],
+                         locations=[logic.fact_located_in(person) for person in persons_storage.persons.all() if person.place_id != self.place_3.id],
                          social_connections=[])
 
 
@@ -364,16 +361,16 @@ class SetupPersonsTest(LogicTestsBase):
 
         expected_connections = []
 
-        for person in persons_storage.persons_storage.all():
+        for person in persons_storage.persons.all():
             if person.place_id == self.place_3.id:
                 continue
             for connection_type, connected_person_id in persons_storage.social_connections.get_person_connections(person):
-                connected_person = persons_storage.persons_storage[connected_person_id]
+                connected_person = persons_storage.persons[connected_person_id]
                 if connected_person.place_id == self.place_3.id:
                     continue
                 expected_connections.append(logic.fact_social_connection(connection_type, uids.person(person.id), uids.person(connected_person.id)))
 
         self.check_facts(places=[logic.fact_place(self.place_1), logic.fact_place(self.place_2)],
-                         persons=[logic.fact_person(person) for person in persons_storage.persons_storage.all() if person.place_id != self.place_3.id],
-                         locations=[logic.fact_located_in(person) for person in persons_storage.persons_storage.all() if person.place_id != self.place_3.id],
+                         persons=[logic.fact_person(person) for person in persons_storage.persons.all() if person.place_id != self.place_3.id],
+                         locations=[logic.fact_located_in(person) for person in persons_storage.persons.all() if person.place_id != self.place_3.id],
                          social_connections=expected_connections)

@@ -42,12 +42,16 @@ class BaseEffectsTests(testcase.TestCase):
 
         self.companion_record = logic.create_companion_record(utg_name=names.generator.get_test_name(),
                                                               description='description',
-                                                              type=relations.TYPE.random(),
+                                                              type=game_relations.BEING_TYPE.random(),
                                                               max_health=10,
                                                               dedication=relations.DEDICATION.random(),
                                                               archetype=game_relations.ARCHETYPE.random(),
                                                               mode=relations.MODE.random(),
                                                               abilities=abilities_container.Container(),
+                                                              communication_verbal=game_relations.COMMUNICATION_VERBAL.random(),
+                                                              communication_gestures=game_relations.COMMUNICATION_GESTURES.random(),
+                                                              communication_telepathic=game_relations.COMMUNICATION_TELEPATHIC.random(),
+                                                              intellect_level=game_relations.INTELLECT_LEVEL.random(),
                                                               state=relations.STATE.ENABLED)
         self.hero.set_companion(logic.create_companion(self.companion_record))
 
@@ -215,13 +219,13 @@ class QuestMoneyRewardTests(BaseEffectsTests):
 
     def test_effect(self):
         effect = effects.QuestMoneyReward(0.5)
-        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 10), 5)
-        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 11), 5.5)
+        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 10), 10.5)
+        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 11), 11.5)
         self.assertEqual(effect._modify_attribute({}, MODIFIERS.random(exclude=(MODIFIERS.QUEST_MONEY_REWARD,)), 11), 11)
 
         effect = effects.QuestMoneyReward(2.0)
-        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 10), 20)
-        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 11), 22)
+        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 10), 12)
+        self.assertEqual(effect._modify_attribute({}, MODIFIERS.QUEST_MONEY_REWARD, 11), 13)
         self.assertEqual(effect._modify_attribute({}, MODIFIERS.random(exclude=(MODIFIERS.QUEST_MONEY_REWARD,)), 11), 11)
 
 
@@ -320,7 +324,8 @@ class BattleAbilityTests(BaseEffectsTests):
                                    effects.BattleAbilityStrongHit,
                                    effects.BattleAbilityRunUpPush,
                                    effects.BattleAbilityPoisonCloud,
-                                   effects.BattleAbilityFreezing)
+                                   effects.BattleAbilityFreezing,
+                                   effects.BattleAbilityRecklessness)
 
         with self.check_changed(lambda: self.hero.initiative):
             with self.check_changed(lambda: len(self.hero.companion.modify_attribute(heroes_relations.MODIFIERS.ADDITIONAL_ABILITIES,
@@ -658,18 +663,18 @@ class CompanionBlockProbabilityTests(BaseEffectsTests):
 class HucksterTests(BaseEffectsTests):
 
     def test_effect(self):
-        effect = effects.Huckster(buy_multiplier_left=3, buy_multiplier_right=3,
-                                  sell_multiplier_left=2, sell_multiplier_right=2)
-        self.assertEqual(effect._modify_attribute({}, MODIFIERS.BUY_PRICE, 12), 36)
+        effect = effects.Huckster(buy_bonus_left=3, buy_bonus_right=3,
+                                  sell_bonus_left=2, sell_bonus_right=2)
+        self.assertEqual(effect._modify_attribute({}, MODIFIERS.BUY_PRICE, 12), 15)
         self.assertEqual(effect._modify_attribute({}, MODIFIERS.random(exclude=(MODIFIERS.BUY_PRICE, MODIFIERS.SELL_PRICE)), 11), 11)
-        self.assertEqual(effect._modify_attribute({}, MODIFIERS.SELL_PRICE, 12), 25)
+        self.assertEqual(effect._modify_attribute({}, MODIFIERS.SELL_PRICE, 13), 16)
         self.assertEqual(effect._modify_attribute({}, MODIFIERS.random(exclude=(MODIFIERS.BUY_PRICE, MODIFIERS.SELL_PRICE)), 11), 11)
 
     def test_in_game(self):
         ability = self.get_ability(effects.Huckster)
 
-        with self.check_changed(lambda: self.hero.modify_buy_price(100)):
-            with self.check_changed(lambda: self.hero.modify_sell_price(100)):
+        with self.check_changed(self.hero.buy_price):
+            with self.check_changed(self.hero.sell_price):
                 self.apply_ability(ability)
 
 

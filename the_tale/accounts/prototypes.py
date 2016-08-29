@@ -16,7 +16,7 @@ from dext.common.utils import s11n
 from the_tale.amqp_environment import environment
 
 from the_tale.common.utils import bbcode
-from the_tale.common.postponed_tasks import PostponedTaskPrototype
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 from the_tale.common.utils.logic import verbose_timedelta
 
 from the_tale.common.utils.password import generate_password
@@ -152,16 +152,29 @@ class AccountPrototype(BasePrototype): #pylint: disable=R0904
     def is_ban_any(self): return self.is_ban_game or self.is_ban_forum
 
     def ban_game(self, days):
-        end_time = datetime.datetime.now() + datetime.timedelta(days=days)
+        end_time = max(self._model.ban_game_end_at, datetime.datetime.now()) + datetime.timedelta(days=days)
         self._model_class.objects.filter(id=self.id).update(ban_game_end_at=end_time)
         self._model.ban_game_end_at = end_time
 
         self.cmd_update_hero()
 
     def ban_forum(self, days):
-        end_time = datetime.datetime.now() + datetime.timedelta(days=days)
+        end_time = max(self._model.ban_forum_end_at, datetime.datetime.now()) + datetime.timedelta(days=days)
         self._model_class.objects.filter(id=self.id).update(ban_forum_end_at=end_time)
         self._model.ban_forum_end_at = end_time
+
+    def reset_ban_game(self):
+        end_time = datetime.datetime.fromtimestamp(0)
+        self._model_class.objects.filter(id=self.id).update(ban_game_end_at=end_time)
+        self._model.ban_game_end_at = end_time
+
+        self.cmd_update_hero()
+
+    def reset_ban_forum(self):
+        end_time = datetime.datetime.fromtimestamp(0)
+        self._model_class.objects.filter(id=self.id).update(ban_forum_end_at=end_time)
+        self._model.ban_forum_end_at = end_time
+
 
     @classmethod
     def send_premium_expired_notifications(cls):

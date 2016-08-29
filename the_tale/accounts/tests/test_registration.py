@@ -3,7 +3,8 @@
 import mock
 
 from the_tale.common.utils import testcase
-from the_tale.common.postponed_tasks import FakePostpondTaskPrototype, POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.tests.helpers import FakePostpondTaskPrototype
+from the_tale.common.postponed_tasks.prototypes import POSTPONED_TASK_LOGIC_RESULT
 
 from the_tale.accounts.logic import register_user, REGISTER_USER_RESULT
 from the_tale.accounts.prototypes import AccountPrototype
@@ -16,9 +17,9 @@ from the_tale.collections.prototypes import AccountItemsPrototype
 
 from the_tale.finances.market import models as market_models
 
-from the_tale.game.heroes.prototypes import HeroPrototype, HeroPreferencesPrototype
-
 from the_tale.game.heroes.relations import EQUIPMENT_SLOT
+from the_tale.game.heroes import logic as heroes_logic
+from the_tale.game.heroes import models as heroes_models
 from the_tale.game.logic import create_test_map
 
 def raise_exception(*argv, **kwargs): raise Exception('unknown error')
@@ -49,7 +50,7 @@ class TestRegistration(testcase.TestCase):
 
         self.assertTrue(not account.is_fast)
 
-        hero = HeroPrototype.get_by_account_id(account.id)
+        hero = heroes_logic.load_hero(account_id=account.id)
 
         # test hero equipment
         self.assertEqual(hero.equipment.get(EQUIPMENT_SLOT.PANTS).id, 'default_pants')
@@ -65,8 +66,8 @@ class TestRegistration(testcase.TestCase):
         self.assertTrue(hero.equipment.get(EQUIPMENT_SLOT.AMULET) is None)
         self.assertTrue(hero.equipment.get(EQUIPMENT_SLOT.RING) is None)
 
-        self.assertEqual(HeroPreferencesPrototype._db_count(), 1)
-        self.assertEqual(HeroPreferencesPrototype.get_by_hero_id(hero.id).energy_regeneration_type,
+        self.assertEqual(heroes_models.HeroPreferences.objects.all().count(), 1)
+        self.assertEqual(heroes_models.HeroPreferences.objects.get(hero_id=hero.id).energy_regeneration_type,
                          hero.preferences.energy_regeneration_type)
 
         self.assertEqual(account.referer, None)

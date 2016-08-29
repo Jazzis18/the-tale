@@ -24,10 +24,7 @@ jQuery(document).ready( function(e) {
 
 {{ templates_macros.key_info(template.key)}}
 
-<ul>
-  <li>Свойства слов приведены в описании <a href="{{url('linguistics:templates:specification')}}">формата шаблонов</a>.</li>
-  <li>Обязательно ознакомьтесь с <a href="{{url('linguistics:how-add-phrase')}}">требованиями к фразам</a>.</li>
-</ul>
+{% include "linguistics/templates/edit_rules.html" %}
 
 <form id="pgf-edit-template-form"
       method="post"
@@ -45,9 +42,9 @@ jQuery(document).ready( function(e) {
 
   <div class="widget">
     {% if copy_will_be_created %}
-    <input type="submit" class="btn btn-success" value="Создать копию"/>
+    <input type="submit" accesskey="c" class="btn btn-success" value="Создать копию"/>
     {% else %}
-    <input type="submit" class="btn btn-success" value="Обновить"/>
+    <input type="submit" accesskey="r" class="btn btn-success" value="Обновить"/>
     {% endif %}
   </div>
 

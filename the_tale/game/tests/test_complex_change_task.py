@@ -3,13 +3,16 @@ import mock
 import datetime
 
 from the_tale.common.utils.testcase import TestCase
-from the_tale.common.postponed_tasks import FakePostpondTaskPrototype, POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.prototypes import POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.tests.helpers import FakePostpondTaskPrototype
 
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.logic import register_user
 
 from the_tale.game.logic_storage import LogicStorage
 from the_tale.game.logic import create_test_map
+
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.game.postponed_tasks import ComplexChangeTask
 
@@ -48,7 +51,7 @@ class ComplexChangeTasksTests(TestCase):
 
     def test_banned(self):
         self.hero.ban_state_end_at = datetime.datetime.now() + datetime.timedelta(days=1)
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
         self.assertEqual(self.task.process(FakePostpondTaskPrototype(), self.storage), POSTPONED_TASK_LOGIC_RESULT.ERROR)
         self.assertEqual(self.task.state, ComplexChangeTask.STATE.BANNED)
 

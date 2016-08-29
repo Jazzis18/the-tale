@@ -37,8 +37,7 @@ class ContainerTests(testcase.TestCase):
         self.storage.load_account_data(self.account)
         self.hero = self.storage.accounts_to_heroes[self.account.id]
 
-        self.hero.cards._load_object()
-        self.container = self.hero.cards._object
+        self.container = self.hero.cards
 
 
     def test_initialization(self):
@@ -50,10 +49,10 @@ class ContainerTests(testcase.TestCase):
         self.container.add_card(objects.Card(relations.CARD_TYPE.ADD_GOLD_COMMON, available_for_auction=True))
 
         self.container.change_help_count(5)
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True):
+        with mock.patch('the_tale.game.heroes.objects.Hero.is_premium', True):
             self.container.change_help_count(3)
 
-        self.assertEqual(self.container.serialize(), container.CardsContainer.deserialize(self.hero, self.container.serialize()).serialize())
+        self.assertEqual(self.container.serialize(), container.CardsContainer.deserialize(self.container.serialize()).serialize())
 
     def test_add_card(self):
         self.assertFalse(self.container.updated)
@@ -126,7 +125,7 @@ class ContainerTests(testcase.TestCase):
         self.assertEqual(self.container._help_count, 5)
         self.assertEqual(self.container._premium_help_count, 0)
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True):
+        with mock.patch('the_tale.game.heroes.objects.Hero.is_premium', True):
             self.container.change_help_count(4)
             self.assertEqual(self.container._help_count, 9)
             self.assertEqual(self.container._premium_help_count, 4)
@@ -197,7 +196,7 @@ class GetNewCardTest(testcase.TestCase):
                 self.assertNotIn(effect_type, effects)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_simple(self):
 
         rarities = set()
@@ -219,7 +218,7 @@ class GetNewCardTest(testcase.TestCase):
         self.assertTrue(len(relations.CARD_TYPE.records) > len(set(card.type for card in self.hero.cards.all_cards())) / 2)
         self.assertEqual(rarities, set(relations.RARITY.records))
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', False)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: False)
     def test_not_premium(self):
 
         for i in xrange(len(relations.CARD_TYPE.records)*10):
@@ -229,32 +228,43 @@ class GetNewCardTest(testcase.TestCase):
             self.assertFalse(card.type.availability.is_FOR_PREMIUMS)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', False)
+    def check_is_next_card_premium(self, help_count, premium_help_count, result):
+        self.hero.cards._help_count = help_count
+        self.hero.cards._premium_help_count = premium_help_count
+        self.assertEqual(self.hero.cards.is_next_card_premium(), result)
+
+    def test_is_next_card_premium(self):
+        self.check_is_next_card_premium(0, 0, False)
+        self.check_is_next_card_premium(10, 9, False)
+        self.check_is_next_card_premium(10, 10, True)
+
+
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: False)
     def test_auction_availability_not_specified_not_premium(self):
         self.assertFalse(self.hero.cards.get_new_card().available_for_auction)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_auction_availability_not_specified_premium(self):
         self.assertTrue(self.hero.cards.get_new_card().available_for_auction)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', False)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: False)
     def test_auction_availability_false_not_premium(self):
         self.assertFalse(self.hero.cards.get_new_card(available_for_auction=False).available_for_auction)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_auction_availability_false_premium(self):
         self.assertFalse(self.hero.cards.get_new_card(available_for_auction=False).available_for_auction)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', False)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: False)
     def test_auction_availability_true_not_premium(self):
         self.assertTrue(self.hero.cards.get_new_card(available_for_auction=True).available_for_auction)
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_auction_availability_true_premium(self):
         self.assertTrue(self.hero.cards.get_new_card(available_for_auction=True).available_for_auction)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_priority(self):
         for i in xrange(len(relations.CARD_TYPE.records)*100):
             self.hero.cards.get_new_card()
@@ -267,7 +277,7 @@ class GetNewCardTest(testcase.TestCase):
             self.assertTrue(last_rarity_count >= rarities[rarity])
             last_rarity_count = rarities[rarity]
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_rarity(self):
         for rarity in relations.RARITY.records:
             for i in xrange(100):
@@ -275,7 +285,7 @@ class GetNewCardTest(testcase.TestCase):
                 self.assertEqual(card.type.rarity, rarity)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_exclude(self):
         cards = []
 
@@ -288,16 +298,17 @@ class GetNewCardTest(testcase.TestCase):
                                                             abilities=rarity_abilities,
                                                             state=companions_relations.STATE.ENABLED)
 
-        for i in xrange(len(relations.CARD_TYPE.records)):
+        for i in xrange(len([card_type for card_type in relations.CARD_TYPE.records if card_type.in_game])):
             card = self.hero.cards.get_new_card(exclude=cards)
             cards.append(card)
+            self.assertTrue(card.type.in_game)
 
         self.assertEqual(self.hero.cards.get_new_card(exclude=cards), None)
 
-        self.assertEqual(set(card.type for card in cards), set(relations.CARD_TYPE.records))
+        self.assertEqual(set(card.type for card in cards), set(card_type for card_type in relations.CARD_TYPE.records if card_type.in_game))
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.cards.container.CardsContainer.is_next_card_premium', lambda self: True)
     def test_exclude__different_data(self):
         cards = []
 
@@ -311,16 +322,17 @@ class GetNewCardTest(testcase.TestCase):
                                                             state=companions_relations.STATE.ENABLED)
 
 
-        for i in xrange(len(relations.CARD_TYPE.records)):
+        for i in xrange(len([card_type for card_type in relations.CARD_TYPE.records if card_type.in_game])):
             card = self.hero.cards.get_new_card(exclude=cards)
             cards.append(card)
+            self.assertTrue(card.type.in_game)
 
         self.assertEqual(self.hero.cards.get_new_card(exclude=cards), None)
 
         cards[0].data = {'fake-data': True}
         self.assertEqual(cards[0].type, self.hero.cards.get_new_card(exclude=cards).type)
 
-        self.assertEqual(set(card.type for card in cards), set(relations.CARD_TYPE.records))
+        self.assertEqual(set(card.type for card in cards), set(card_type for card_type in relations.CARD_TYPE.records if card_type.in_game))
 
 
 class CanCombineCardsTests(testcase.TestCase):
@@ -494,7 +506,7 @@ class CombineCardsTests(testcase.TestCase):
         self.assertTrue(card.type.rarity.is_UNCOMMON)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_premium', True)
     def test_auction_availability__not_available__hero_premium(self):
         self.card__add_power_common_1.available_for_auction = True
         self.card__add_bonus_energy_common_1.available_for_auction = False
@@ -507,7 +519,7 @@ class CombineCardsTests(testcase.TestCase):
         self.assertFalse(card.available_for_auction)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_premium', True)
     def test_auction_availability__available__hero_premium(self):
         self.card__add_power_common_1.available_for_auction = True
         self.card__add_bonus_energy_common_1.available_for_auction = True
@@ -520,7 +532,7 @@ class CombineCardsTests(testcase.TestCase):
         self.assertTrue(card.available_for_auction)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_premium', False)
     def test_auction_availability__not_available__hero_not_premium(self):
         self.card__add_power_common_1.available_for_auction = True
         self.card__add_bonus_energy_common_1.available_for_auction = False
@@ -533,7 +545,7 @@ class CombineCardsTests(testcase.TestCase):
         self.assertFalse(card.available_for_auction)
 
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.is_premium', False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.is_premium', False)
     def test_auction_availability__available__hero_not_premium(self):
         self.card__add_power_common_1.available_for_auction = True
         self.card__add_bonus_energy_common_1.available_for_auction = True

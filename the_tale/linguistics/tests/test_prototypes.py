@@ -257,10 +257,10 @@ class TemplatePrototypeTests(testcase.TestCase):
 
         template.parse(TEXT, externals=['hero'])
 
-        verificator_1 = prototypes.Verificator(text=u'Героиня 1 w-1-полнприл,ед,вн,жр,од,пол', externals={'hero': (u'героиня', u''), 'level': (1, u'')})
-        verificator_2 = prototypes.Verificator(text=u'Рыцари 5 w-1-полнприл,мн,вн,од,пол', externals={'hero': (u'рыцарь', u'мн'), 'level': (5, u'')})
-        verificator_3 = prototypes.Verificator(text=u'Герой 2 w-1-полнприл,ед,вн,мр,од,пол', externals={'hero': (u'герой', u''), 'level': (2, u'')})
-        verificator_4 = prototypes.Verificator(text=u'Привидение 5 w-1-полнприл,ед,вн,ср,од,пол', externals={'hero': (u'привидение', u''), 'level': (5, u'')})
+        verificator_1 = prototypes.Verificator(text=u'Героиня 1 w-1-полнприл,пол,од,ед,вн,жр', externals={'hero': (u'героиня', u''), 'level': (1, u'')})
+        verificator_2 = prototypes.Verificator(text=u'Рыцари 5 w-1-полнприл,пол,од,мн,вн', externals={'hero': (u'рыцарь', u'мн'), 'level': (5, u'')})
+        verificator_3 = prototypes.Verificator(text=u'Герой 2 w-1-полнприл,пол,од,ед,вн,мр', externals={'hero': (u'герой', u''), 'level': (2, u'')})
+        verificator_4 = prototypes.Verificator(text=u'Привидение 5 w-1-полнприл,пол,од,ед,вн,ср', externals={'hero': (u'привидение', u''), 'level': (5, u'')})
 
         dictionary = storage.game_dictionary.item
 
@@ -274,6 +274,7 @@ class TemplatePrototypeTests(testcase.TestCase):
                                                         utg_template=template,
                                                         verificators=[verificator_1, verificator_2, verificator_3, verificator_4],
                                                         author=self.account_1)
+
         self.assertTrue(prototype.errors_status.is_NO_ERRORS)
 
         errors = prototype.get_errors()
@@ -355,7 +356,7 @@ class TemplatePrototypeTests(testcase.TestCase):
         template.parse(TEXT, externals=['hero'])
 
         verificator_1 = prototypes.Verificator(text=u'абракадабра', externals={'hero': (u'героиня', u''), 'level': (1, u'')})
-        verificator_2 = prototypes.Verificator(text=u'Рыцари 5 w-1-полнприл,мн,вн,од,пол', externals={'hero': (u'рыцарь', u'мн'), 'level': (5, u'')})
+        verificator_2 = prototypes.Verificator(text=u'Рыцари 5 w-1-полнприл,пол,од,мн,вн', externals={'hero': (u'рыцарь', u'мн'), 'level': (5, u'')})
         verificator_3 = prototypes.Verificator(text=u'Герой 2 w-1-ед,вн', externals={'hero': (u'герой', u''), 'level': (2, u'')})
         verificator_4 = prototypes.Verificator(text=u'', externals={'hero': (u'привидение', u''), 'level': (5, u'')})
 
@@ -374,9 +375,9 @@ class TemplatePrototypeTests(testcase.TestCase):
 
         errors = prototype.get_errors()
 
-        self.assertEqual(errors, [u'Проверочный текст не совпадает с интерпретацией шаблона<br/>Героиня 1 w-1-полнприл,ед,вн,жр,од,пол<br/>абракадабра',
-                                  u'Проверочный текст не совпадает с интерпретацией шаблона<br/>Герой 2 w-1-полнприл,ед,вн,мр,од,пол<br/>Герой 2 w-1-ед,вн',
-                                  u'Проверочный текст не совпадает с интерпретацией шаблона<br/>Привидение 5 w-1-полнприл,ед,вн,ср,од,пол<br/>'])
+        self.assertEqual(errors, [u'Проверочный текст не совпадает с интерпретацией шаблона<br/>Героиня 1 w-1-полнприл,пол,од,ед,вн,жр<br/>абракадабра',
+                                  u'Проверочный текст не совпадает с интерпретацией шаблона<br/>Герой 2 w-1-полнприл,пол,од,ед,вн,мр<br/>Герой 2 w-1-ед,вн',
+                                  u'Проверочный текст не совпадает с интерпретацией шаблона<br/>Привидение 5 w-1-полнприл,пол,од,ед,вн,ср<br/>'])
 
 
     def test_update_errors_status__without_force_update(self):
@@ -460,10 +461,10 @@ class VerificatorTests(testcase.TestCase):
 
         self.assertEqual(len(verificators), 4)
 
-        self.assertEqual(verificators[0], prototypes.Verificator(text=u'', externals={'hero': (u'героиня', u''), 'level': (1, u'')}))
-        self.assertEqual(verificators[1], prototypes.Verificator(text=u'', externals={'hero': (u'рыцарь', u'мн'), 'level': (5, u'')}))
-        self.assertEqual(verificators[2], prototypes.Verificator(text=u'', externals={'hero': (u'герой', u''), 'level': (2, u'')}))
-        self.assertEqual(verificators[3], prototypes.Verificator(text=u'', externals={'hero': (u'привидение', u''), 'level': (5, u'')}))
+        self.assertEqual(verificators[0], prototypes.Verificator(text=u'', externals={'hero': (u'герой', u''), 'level': (1, u'')}))
+        self.assertEqual(verificators[1], prototypes.Verificator(text=u'', externals={'hero': (u'привидение', u''), 'level': (2, u'')}))
+        self.assertEqual(verificators[2], prototypes.Verificator(text=u'', externals={'hero': (u'героиня', u''), 'level': (5, u'')}))
+        self.assertEqual(verificators[3], prototypes.Verificator(text=u'', externals={'hero': (u'рыцарь', u'мн'), 'level': (1, u'')}))
 
 
     def test_get_verificators__with_old(self):
@@ -482,8 +483,23 @@ class VerificatorTests(testcase.TestCase):
 
         self.assertEqual(verificators[0], prototypes.Verificator(text=u'1', externals={'hero': (u'привидение', u''), 'level': (1, u'')}))
         self.assertEqual(verificators[1], prototypes.Verificator(text=u'5', externals={'hero': (u'герой', u''), 'level': (2, u'')}))
-        self.assertEqual(verificators[2], prototypes.Verificator(text=u'', externals={'hero': (u'рыцарь', u'мн'), 'level': (5, u'')}))
-        self.assertEqual(verificators[3], prototypes.Verificator(text=u'', externals={'hero': (u'героиня', u''), 'level': (5, u'')}))
+        self.assertEqual(verificators[2], prototypes.Verificator(text=u'', externals={'hero': (u'героиня', u''), 'level': (5, u'')}))
+        self.assertEqual(verificators[3], prototypes.Verificator(text=u'', externals={'hero': (u'рыцарь', u'мн'), 'level': (1, u'')}))
+
+
+    def test_get_verificators__one_substitutions_type(self):
+        groups = lexicon_logic.get_verificators_groups(key=keys.LEXICON_KEY.PVP_USE_ABILITY_BLOOD, old_groups={})
+        self.assertEqual(groups, {'duelist_1': (0, 0), 'duelist_2': (0, 1), 'effectiveness': (1, 0)})
+
+        verificators = prototypes.Verificator.get_verificators(key=self.key, groups=groups)
+
+        self.assertEqual(len(verificators), 4)
+
+        self.assertEqual(verificators[0], prototypes.Verificator(text=u'', externals={'duelist_1': (u'герой', u''), 'duelist_2': (u'чудовище', u''), 'effectiveness': (1, u'')}))
+        self.assertEqual(verificators[1], prototypes.Verificator(text=u'', externals={'duelist_1': (u'привидение', u''), 'duelist_2': (u'русалка', u''), 'effectiveness': (2, u'')}))
+        self.assertEqual(verificators[2], prototypes.Verificator(text=u'', externals={'duelist_1': (u'героиня', u''), 'duelist_2': (u'боец', u'мн'),'effectiveness': (5, u'')}))
+        self.assertEqual(verificators[3], prototypes.Verificator(text=u'', externals={'duelist_1': (u'рыцарь', u'мн'), 'duelist_2': (u'призрак', u''), 'effectiveness': (1, u'')}))
+
 
 
 class ContributionTests(testcase.TestCase):

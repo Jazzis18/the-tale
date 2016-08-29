@@ -1,0 +1,75 @@
+
+{% macro person_description(person) %}
+  <div class="underline-on-hover"
+       style="cursor: default; display: inline-block;"
+       rel="tooltip"
+       title="{{person.personality_practical.description}}">
+
+       {% if person.gender.is_MASCULINE %}
+         {{person.personality_practical.male_text}}
+       {% endif %}
+
+       {% if person.gender.is_FEMININE %}
+         {{person.personality_practical.female_text}}
+       {% endif %}
+
+  </div>
+
+  {% if person.gender.is_MASCULINE %}
+    {{person.race.male_text}},
+  {% endif %}
+
+  {% if person.gender.is_FEMININE %}
+    {{person.race.female_text}},
+  {% endif %}
+
+  {% if person.gender.is_MASCULINE %}
+    {{person.type.male_text}}
+  {% endif %}
+
+  {% if person.gender.is_FEMININE %}
+    {{person.type.female_text}}
+  {% endif %}
+
+  и
+  <div class="underline-on-hover"
+       style="cursor: default; display: inline-block;"
+       rel="tooltip"
+       title="{{person.personality_cosmetic.description}}">
+
+       {% if person.gender.is_MASCULINE %}
+         {{person.personality_cosmetic.male_text}}
+       {% endif %}
+
+       {% if person.gender.is_FEMININE %}
+         {{person.personality_cosmetic.female_text}}
+       {% endif %}
+
+  </div>
+{% endmacro %}
+
+{% macro person_verbose(person, hero=none) %}
+
+  <a href="{{url('game:persons:show', person.id)}}" target="_blank">{{person.name}}</a> —
+
+  {{ person_description(person) }}
+
+  {% if hero and hero.preferences.friend and hero.preferences.friend.id == person.id %}
+    <span class="badge badge-success">соратник</span>
+  {% elif hero and hero.preferences.enemy and hero.preferences.enemy.id == person.id %}
+    <span class="badge badge-important">противник</span>
+  {% endif %}
+
+  {% if person.on_move_timeout %}
+    <i class="icon-time pgf-time-before-unfreeze"
+       rel="tooltip"
+       title="Недавно в городе и может его покинуть только через {{person.seconds_before_next_move|verbose_timedelta}}"></i>
+  {% endif %}
+
+  {% if person.building is not none %}
+    <i class="icon-home"
+       rel="tooltip"
+       title="Владеет строением в окрестностях города"></i>
+  {% endif %}
+
+{% endmacro %}

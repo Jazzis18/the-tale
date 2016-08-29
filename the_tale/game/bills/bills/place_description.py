@@ -12,17 +12,18 @@ from the_tale.game.bills import relations
 from the_tale.game.bills.forms import BaseUserForm, BaseModeratorForm
 from the_tale.game.bills.bills.base_bill import BaseBill
 
-from the_tale.game.map.places.storage import places_storage
-from the_tale.game.map.places.conf import places_settings
+from the_tale.game.places import storage as places_storage
+from the_tale.game.places import conf as places_conf
+from the_tale.game.places import logic as places_logic
 
 class UserForm(BaseUserForm):
 
     place = fields.ChoiceField(label=u'Город')
-    new_description = bbcode.BBField(label=u'Новое описание', max_length=places_settings.MAX_DESCRIPTION_LENGTH)
+    new_description = bbcode.BBField(label=u'Новое описание', max_length=places_conf.settings.MAX_DESCRIPTION_LENGTH)
 
     def __init__(self, *args, **kwargs):
         super(UserForm, self).__init__(*args, **kwargs)
-        self.fields['place'].choices = places_storage.get_choices()
+        self.fields['place'].choices = places_storage.places.get_choices()
 
 
 class ModeratorForm(BaseModeratorForm):
@@ -35,10 +36,6 @@ class PlaceDescripton(BaseBill):
 
     UserForm = UserForm
     ModeratorForm = ModeratorForm
-
-    USER_FORM_TEMPLATE = 'bills/bills/place_description_user_form.html'
-    MODERATOR_FORM_TEMPLATE = 'bills/bills/place_description_moderator_form.html'
-    SHOW_TEMPLATE = 'bills/bills/place_description_show.html'
 
     CAPTION = u'Изменение описания города'
     DESCRIPTION = u'Изменяет описание города. При создании нового описания постарайтесь учесть, какой расе принадлежит город, кто является его жителями и в какую сторону он развивается. Также не забывайте, что описание должно соответствовать названию города. Описание должно быть небольшим по размеру.'
@@ -63,7 +60,7 @@ class PlaceDescripton(BaseBill):
     def old_name(self): return self.old_name_forms.normal_form()
 
     @property
-    def place(self): return places_storage[self.place_id]
+    def place(self): return places_storage.places[self.place_id]
 
     @property
     def actors(self): return [self.place]
@@ -83,9 +80,13 @@ class PlaceDescripton(BaseBill):
         self.old_name_forms = self.place.utg_name
         self.old_description = self.place.description
 
+    def has_meaning(self):
+        return self.place.description != self.description
+
     def apply(self, bill=None):
-        self.place.description = self.description
-        self.place.save()
+        if self.has_meaning():
+            self.place.description = self.description
+            places_logic.save_place(self.place)
 
     def serialize(self):
         return {'type': self.type.name.lower(),

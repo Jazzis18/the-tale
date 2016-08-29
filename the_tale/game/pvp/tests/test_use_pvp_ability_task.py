@@ -3,7 +3,8 @@ import random
 
 from the_tale.common.utils import testcase
 
-from the_tale.common.postponed_tasks import FakePostpondTaskPrototype, POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.prototypes import POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.tests.helpers import FakePostpondTaskPrototype
 
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.logic import register_user
@@ -74,16 +75,16 @@ class UsePvPAbilityTests(testcase.TestCase):
     def test_process_success(self):
         self.hero_1.pvp.set_energy(1)
 
-        old_hero_1_last_message = self.hero_1.messages.messages[-1]
-        old_hero_2_last_message = self.hero_2.messages.messages[-1]
+        old_hero_1_last_message = self.hero_1.journal.messages[-1]
+        old_hero_2_last_message = self.hero_2.journal.messages[-1]
 
         self.assertEqual(self.task.process(FakePostpondTaskPrototype(), self.storage), POSTPONED_TASK_LOGIC_RESULT.SUCCESS)
         self.assertEqual(self.task.state, USE_PVP_ABILITY_TASK_STATE.PROCESSED)
 
-        self.assertNotEqual(old_hero_1_last_message, self.hero_1.messages.messages[-1])
-        self.assertNotEqual(old_hero_2_last_message, self.hero_2.messages.messages[-1])
+        self.assertNotEqual(old_hero_1_last_message, self.hero_1.journal.messages[-1])
+        self.assertNotEqual(old_hero_2_last_message, self.hero_2.journal.messages[-1])
 
-        self.assertNotEqual(old_hero_1_last_message.ui_info()[-1], self.hero_1.messages.ui_info()[-1][2])
-        self.assertEqual(old_hero_2_last_message.ui_info()[-1], self.hero_2.messages.ui_info()[-1][2])
+        self.assertNotEqual(old_hero_1_last_message.ui_info()[-1], self.hero_1.journal.ui_info()[-1][-1])
+        self.assertEqual(old_hero_2_last_message.ui_info()[-1], self.hero_2.journal.ui_info()[-1][-1])
 
         self.assertEqual(self.hero_1.pvp.energy, 0)

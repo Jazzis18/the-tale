@@ -16,8 +16,8 @@ class PersonChronicleTests(BaseTestPrototypes):
     def setUp(self):
         super(PersonChronicleTests, self).setUp()
 
-        self.person1 = sorted(self.place1.persons, key=lambda p: -p.power)[0]
-        self.person2 = sorted(self.place2.persons, key=lambda p: -p.power)[-1]
+        self.person1 = sorted(self.place1.persons, key=lambda p: -p.total_politic_power_fraction)[0]
+        self.person2 = sorted(self.place2.persons, key=lambda p: -p.total_politic_power_fraction)[-1]
 
         self.bill_data = PersonChronicle(person_id=self.person1.id, old_place_name_forms=self.place1.utg_name, power_bonus=relations.POWER_BONUS_CHANGES.UP)
         self.bill = BillPrototype.create(self.account1, 'bill-1-caption', 'bill-1-rationale', self.bill_data, chronicle_on_accepted='chronicle-on-accepted')
@@ -56,7 +56,7 @@ class PersonChronicleTests(BaseTestPrototypes):
         self.assertTrue(form.is_valid())
         self.bill.update_by_moderator(form)
 
-        with mock.patch('the_tale.game.persons.prototypes.PersonPrototype.cmd_change_power') as cmd_change_power:
+        with mock.patch('the_tale.game.persons.objects.Person.cmd_change_power') as cmd_change_power:
             self.assertTrue(self.bill.apply())
 
         self.assertEqual(cmd_change_power.call_args_list, change_power_mock)
@@ -66,15 +66,11 @@ class PersonChronicleTests(BaseTestPrototypes):
 
     def test_apply_up(self):
         self.bill.data.power_bonus = relations.POWER_BONUS_CHANGES.UP
-        self.check_apply([mock.call(power=0,
-                                   positive_bonus=relations.POWER_BONUS_CHANGES.UP.bonus_delta,
-                                   negative_bonus=0)])
+        self.check_apply([mock.call(has_place_in_preferences=False, has_person_in_preferences=False, power=6400, hero_id=None)])
 
     def test_apply_down(self):
         self.bill.data.power_bonus = relations.POWER_BONUS_CHANGES.DOWN
-        self.check_apply([mock.call(power=0,
-                                   positive_bonus=0,
-                                   negative_bonus=relations.POWER_BONUS_CHANGES.UP.bonus_delta)])
+        self.check_apply([mock.call(has_place_in_preferences=False, has_person_in_preferences=False, power=-6400, hero_id=None)])
 
     def test_apply_not_change(self):
         self.bill.data.power_bonus = relations.POWER_BONUS_CHANGES.NOT_CHANGE

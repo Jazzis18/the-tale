@@ -2,11 +2,9 @@
 
 from the_tale.common.utils import testcase
 
-from the_tale.accounts.logic import register_user
-
 from the_tale.game.logic import create_test_map
 
-from the_tale.game.heroes.prototypes import HeroPrototype
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.game.artifacts import relations
 from the_tale.game.artifacts import effects
@@ -20,12 +18,13 @@ class EffectsTests(testcase.TestCase):
 
         create_test_map()
 
-        result, account_id, bundle_id = register_user('test_user')
-        self.hero = HeroPrototype.get_by_account_id(account_id)
+        account = self.accounts_factory.create_account()
+        self.hero = heroes_logic.load_hero(account_id=account.id)
 
         artifacts_storage.sync(force=True)
 
         self.artifact = self.hero.equipment.values()[0]
+        self.artifact_2 = self.hero.equipment.values()[1]
 
 
     def test_all_effects_declared(self):
@@ -40,6 +39,11 @@ class EffectsTests(testcase.TestCase):
     def _set_effect(self, effect):
         self.artifact.rarity = relations.RARITY.RARE
         self.artifact.record.rare_effect = effect
+        self.hero.reset_accessors_cache()
+
+    def _set_effect_2(self, effect):
+        self.artifact_2.rarity = relations.RARITY.RARE
+        self.artifact_2.record.rare_effect = effect
         self.hero.reset_accessors_cache()
 
     def test_physical_damage(self):
@@ -132,16 +136,21 @@ class EffectsTests(testcase.TestCase):
             self._set_effect(relations.ARTIFACT_EFFECT.IDLE_LENGTH)
 
     def test_conviction(self):
-        with self.check_decreased(lambda: self.hero.modify_buy_price(100)):
+        with self.check_decreased(self.hero.buy_price):
             self._set_effect(relations.ARTIFACT_EFFECT.CONVICTION)
 
     def test_charm(self):
-        with self.check_increased(lambda: self.hero.modify_sell_price(100)):
+        with self.check_increased(self.hero.sell_price):
             self._set_effect(relations.ARTIFACT_EFFECT.CHARM)
 
     def test_spiritual_connection(self):
         with self.check_increased(lambda: self.hero.energy_discount):
             self._set_effect(relations.ARTIFACT_EFFECT.SPIRITUAL_CONNECTION)
+
+    def test_spiritual_connection__not_summurize(self):
+        with self.check_delta(lambda: self.hero.energy_discount, 1):
+            self._set_effect(relations.ARTIFACT_EFFECT.SPIRITUAL_CONNECTION)
+            self._set_effect_2(relations.ARTIFACT_EFFECT.SPIRITUAL_CONNECTION)
 
     def test_peace_of_mind(self):
         with self.check_increased(lambda: self.hero.regenerate_double_energy_probability):
@@ -168,6 +177,12 @@ class EffectsTests(testcase.TestCase):
         self._set_effect(relations.ARTIFACT_EFFECT.ICE)
         self.assertEqual(len(self.hero.additional_abilities), 1)
         self.assertEqual(self.hero.additional_abilities[0].__class__, effects.Ice.ABILITY)
+
+    def test_recklessness(self):
+        self.assertEqual(self.hero.additional_abilities, [])
+        self._set_effect(relations.ARTIFACT_EFFECT.RECKLESSNESS)
+        self.assertEqual(len(self.hero.additional_abilities), 1)
+        self.assertEqual(self.hero.additional_abilities[0].__class__, effects.Recklessness.ABILITY)
 
     def test_flame(self):
         self.assertEqual(self.hero.additional_abilities, [])

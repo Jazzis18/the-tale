@@ -8,7 +8,6 @@ from the_tale.game.balance import constants as c
 
 APP_DIR = os.path.abspath(os.path.dirname(__file__))
 
-
 game_settings = app_settings('GAME',
 
                              TURN_DELAY=c.TURN_DELTA,
@@ -35,7 +34,7 @@ game_settings = app_settings('GAME',
 
                              GAME_STATE_KEY='game state',
 
-                             INFO_API_VERSION='1.3',
+                             INFO_API_VERSION='1.5',
 
                              SAVE_ON_EXCEPTION_TIMEOUT=60*60, # seconds
 

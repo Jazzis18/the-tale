@@ -5,7 +5,7 @@ from django.dispatch import receiver
 from the_tale.game.bills import signals as bills_signals
 from the_tale.game.bills import relations as bill_relations
 
-from the_tale.game.map.places import signals as places_signals
+from the_tale.game.places import signals as places_signals
 
 from the_tale.game.chronicle import records
 from the_tale.game.chronicle.relations import ACTOR_ROLE
@@ -49,6 +49,14 @@ def _get_bill_place_modifier_arguments(bill):
 def _get_bill_person_remove_arguments(bill):
     return { 'actors': [(ACTOR_ROLE.BILL, bill),
                         (ACTOR_ROLE.PLACE, bill.data.person.place),
+                        (ACTOR_ROLE.PERSON, bill.data.person)],
+             'substitutions': {},
+             'text': bill.chronicle_on_accepted }
+
+def _get_bill_person_move_arguments(bill):
+    return { 'actors': [(ACTOR_ROLE.BILL, bill),
+                        (ACTOR_ROLE.PLACE, bill.data.place),
+                        (ACTOR_ROLE.PLACE, bill.data.new_place),
                         (ACTOR_ROLE.PERSON, bill.data.person)],
              'substitutions': {},
              'text': bill.chronicle_on_accepted }
@@ -118,8 +126,9 @@ def _get_bill_decline_bill_arguments(bill):
 BILL_ARGUMENT_GETTERS = {
     bill_relations.BILL_TYPE.PLACE_RENAMING: _get_bill_place_renaming_arguments,
     bill_relations.BILL_TYPE.PLACE_DESCRIPTION: _get_bill_place_description_arguments,
-    bill_relations.BILL_TYPE.PLACE_MODIFIER: _get_bill_place_modifier_arguments,
+    bill_relations.BILL_TYPE.PLACE_CHANGE_MODIFIER: _get_bill_place_modifier_arguments,
     bill_relations.BILL_TYPE.PERSON_REMOVE: _get_bill_person_remove_arguments,
+    bill_relations.BILL_TYPE.PERSON_MOVE: _get_bill_person_move_arguments,
     bill_relations.BILL_TYPE.BUILDING_CREATE: _get_bill_building_arguments,
     bill_relations.BILL_TYPE.BUILDING_DESTROY: _get_bill_building_arguments,
     bill_relations.BILL_TYPE.BUILDING_RENAMING: _get_bill_building_rename_arguments,
@@ -138,65 +147,45 @@ def chronicle_bill_processed(sender, bill, **kwargs): # pylint: disable=R0912,W0
 
     if bill.data.type == bill_relations.BILL_TYPE.PLACE_RENAMING:
         record_type = records.PlaceChangeNameBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.PLACE_DESCRIPTION:
         record_type = records.PlaceChangeDescriptionBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
-    elif bill.data.type == bill_relations.BILL_TYPE.PLACE_MODIFIER:
+    elif bill.data.type == bill_relations.BILL_TYPE.PLACE_CHANGE_MODIFIER:
         record_type = records.PlaceChangeModifierBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.PERSON_REMOVE:
         record_type = records.PersonRemoveBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
+
+    elif bill.data.type == bill_relations.BILL_TYPE.PERSON_MOVE:
+        record_type = records.PersonMoveBillSuccessed
 
     elif bill.data.type == bill_relations.BILL_TYPE.BUILDING_CREATE:
         record_type = records.BuildingCreateBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.BUILDING_DESTROY:
         record_type = records.BuildingDestroyBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.BUILDING_RENAMING:
         record_type = records.BuildingRenamingBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.PLACE_RESOURCE_EXCHANGE:
         record_type = records.PlaceResourceExchangeBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.BILL_DECLINE:
         record_type = records.BillDeclineSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.PLACE_RESOURCE_CONVERSION:
         record_type = records.PlaceResourceConversionBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.PERSON_CHRONICLE:
         record_type = records.PersonChronicleBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
     elif bill.data.type == bill_relations.BILL_TYPE.PLACE_CHRONICLE:
         record_type = records.PlaceChronicleBillSuccessed
-        record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
+    record_type(**BILL_ARGUMENT_GETTERS[bill.data.type](bill)).create_record()
 
-@receiver(places_signals.place_modifier_reseted, dispatch_uid='chronicle_place_modifier_reseted')
-def chronicle_place_modifier_reseted(sender, place, old_modifier, **kwargs): # pylint: disable=W0613
-    records.PlaceLosedModifier(actors=[(ACTOR_ROLE.PLACE, place)],
-                               substitutions={'place': place,
-                                              'old_modifier': old_modifier.TYPE}).create_record()
-
-@receiver(places_signals.place_person_left, dispatch_uid='chronicle_place_person_left')
-def chronicle_place_person_left(sender, place, person, **kwargs): # pylint: disable=W0613
-    records.PersonLeftPlace(actors=[(ACTOR_ROLE.PLACE, place),
-                                    (ACTOR_ROLE.PERSON, person)],
-                            substitutions={'place': place,
-                                           'person': person}).create_record()
 
 @receiver(places_signals.place_person_arrived, dispatch_uid='chronicle_place_person_arrived')
 def chronicle_place_person_arrived(sender, place, person, **kwargs): # pylint: disable=W0613

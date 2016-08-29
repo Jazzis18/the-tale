@@ -8,17 +8,17 @@ from the_tale.game.bills import relations
 from the_tale.game.bills.forms import BaseUserForm, BaseModeratorForm
 from the_tale.game.bills.bills.base_bill import BaseBill
 
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.places import storage as places_storage
 
 
 class UserForm(BaseUserForm):
 
     place = fields.ChoiceField(label=u'Город')
-    power_bonus = fields.RelationField(label=u'Изменение бонуса влияния', relation=relations.POWER_BONUS_CHANGES)
+    power_bonus = fields.RelationField(label=u'Изменение влияния', relation=relations.POWER_BONUS_CHANGES)
 
     def __init__(self, *args, **kwargs):
         super(UserForm, self).__init__(*args, **kwargs)
-        self.fields['place'].choices = places_storage.get_choices()
+        self.fields['place'].choices = places_storage.places.get_choices()
 
 
 class ModeratorForm(BaseModeratorForm):
@@ -31,10 +31,6 @@ class PlaceChronicle(BaseBill):
 
     UserForm = UserForm
     ModeratorForm = ModeratorForm
-
-    USER_FORM_TEMPLATE = 'bills/bills/place_chronicle_user_form.html'
-    MODERATOR_FORM_TEMPLATE = 'bills/bills/place_chronicle_moderator_form.html'
-    SHOW_TEMPLATE = 'bills/bills/place_chronicle_show.html'
 
     CAPTION = u'Запись в летописи о городе'
     DESCRIPTION = u'В жизни происходит множество интересных событий. Часть из них оказывается достойна занесения в летопись и может немного повлиять на участвующий в них город.'
@@ -52,7 +48,7 @@ class PlaceChronicle(BaseBill):
     def old_name(self): return self.old_name_forms.normal_form()
 
     @property
-    def place(self): return places_storage[self.place_id]
+    def place(self): return places_storage.places[self.place_id]
 
     @property
     def actors(self): return [self.place]
@@ -71,13 +67,20 @@ class PlaceChronicle(BaseBill):
         self.power_bonus = user_form.c.power_bonus
         self.old_name_forms = self.place.utg_name
 
+    def has_meaning(self):
+        return True
+
     def apply(self, bill=None):
-        if self.power_bonus.bonus_delta == 0:
+        if not self.has_meaning():
             return
 
-        self.place.cmd_change_power(power=0,
-                                     positive_bonus=self.power_bonus.bonus_delta if self.power_bonus.bonus_delta > 0 else 0,
-                                     negative_bonus=-self.power_bonus.bonus_delta if self.power_bonus.bonus_delta < 0 else 0)
+        if self.power_bonus.bonus == 0:
+            return
+
+        self.place.cmd_change_power(hero_id=None,
+                                    has_place_in_preferences=False,
+                                    has_person_in_preferences=False,
+                                    power=self.power_bonus.bonus)
 
     def serialize(self):
         return {'type': self.type.name.lower(),

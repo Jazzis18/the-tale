@@ -43,7 +43,7 @@ class RegenerateEnergyActionTest(testcase.TestCase):
         self.assertEqual(self.hero.actions.current_action, self.action_regenerate)
         self.storage._test_save()
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_regenerate_double_energy', False)
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_regenerate_double_energy', False)
     def test_full(self):
         self.hero.change_energy(-self.hero.energy)
 
@@ -54,13 +54,13 @@ class RegenerateEnergyActionTest(testcase.TestCase):
             current_time.increment_turn()
 
         self.assertTrue(self.action_idl.leader)
-        self.assertEqual(self.hero.energy, f.angel_energy_regeneration_amount(self.hero.preferences.energy_regeneration_type))
+        self.assertEqual(self.hero.energy, self.hero.preferences.energy_regeneration_type.amount)
         self.assertEqual(self.hero.need_regenerate_energy, False)
         self.assertEqual(self.hero.last_energy_regeneration_at_turn, TimePrototype.get_current_turn_number()-1)
 
         self.storage._test_save()
 
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.can_regenerate_double_energy', True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.can_regenerate_double_energy', True)
     def test_full__double_energy(self):
         self.hero.change_energy(-self.hero.energy)
 
@@ -71,7 +71,7 @@ class RegenerateEnergyActionTest(testcase.TestCase):
             current_time.increment_turn()
 
         self.assertTrue(self.action_idl.leader)
-        self.assertEqual(self.hero.energy, f.angel_energy_regeneration_amount(self.hero.preferences.energy_regeneration_type) * 2)
+        self.assertEqual(self.hero.energy, self.hero.preferences.energy_regeneration_type.amount * 2)
         self.assertEqual(self.hero.need_regenerate_energy, False)
         self.assertEqual(self.hero.last_energy_regeneration_at_turn, TimePrototype.get_current_turn_number()-1)
 

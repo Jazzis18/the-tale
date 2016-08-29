@@ -1,10 +1,10 @@
 # coding: utf-8
 
-import datetime
-
 from django.db import models
 
 from rels.django import RelationIntegerField
+
+from dext.common.utils import s11n
 
 from the_tale.game.relations import GENDER, RACE
 from the_tale.game.persons import relations
@@ -16,26 +16,19 @@ class Person(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=False)
     created_at_turn = models.IntegerField(null=False, default=0)
 
-    out_game_at = models.DateTimeField(null=False, default=datetime.datetime(2000, 1, 1))
+    updated_at_turn = models.BigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True, null=False)
 
     place = models.ForeignKey('places.Place', related_name='persons', on_delete=models.PROTECT)
-
-    state = RelationIntegerField(relation=relations.PERSON_STATE)
 
     gender = RelationIntegerField(relation=GENDER, relation_column='value')
     race = RelationIntegerField(relation=RACE, relation_column='value')
 
     type = RelationIntegerField(relation=relations.PERSON_TYPE, relation_column='value')
 
-    friends_number = models.IntegerField(default=0)
-
-    enemies_number = models.IntegerField(default=0)
-
-    name = models.CharField(max_length=MAX_NAME_LENGTH, null=False, db_index=True)
-
     data = models.TextField(null=False, default=u'{}')
 
-    def __unicode__(self): return u'%s from %s' % (self.name, self.place)
+    def __unicode__(self): return u'%s from %s' % (s11n.from_json(self.data)['name']['forms'][0], self.place)
 
 
 

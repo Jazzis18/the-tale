@@ -1,9 +1,11 @@
 # coding: utf-8
+import mock
 
 from utg import relations as utg_relations
 
 from the_tale.common.utils.testcase import TestCase
-from the_tale.common.postponed_tasks import FakePostpondTaskPrototype, POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.prototypes import POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.tests.helpers import FakePostpondTaskPrototype
 
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.logic import register_user
@@ -59,7 +61,10 @@ class ChangeHeroTest(TestCase):
         self.assertNotEqual(self.hero.race, self.race)
         self.assertFalse(self.hero.settings_approved)
 
-        self.assertEqual(task.process(FakePostpondTaskPrototype(), self.storage), POSTPONED_TASK_LOGIC_RESULT.SUCCESS)
+        with mock.patch('the_tale.game.heroes.objects.Hero.reset_accessors_cache') as reset_accessors_cache:
+            self.assertEqual(task.process(FakePostpondTaskPrototype(), self.storage), POSTPONED_TASK_LOGIC_RESULT.SUCCESS)
+
+        self.assertEqual(reset_accessors_cache.call_count, 1)
 
         self.assertEqual(task.state, CHANGE_HERO_TASK_STATE.PROCESSED)
         self.assertEqual(self.hero.utg_name.forms, self.noun.forms)

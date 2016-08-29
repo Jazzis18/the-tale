@@ -4,7 +4,7 @@ import mock
 
 from the_tale.common.utils import testcase
 
-from the_tale.common.postponed_tasks import PostponedTaskPrototype
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 
 from the_tale.finances.bank.prototypes import InvoicePrototype
 from the_tale.finances.bank.relations import ENTITY_TYPE, CURRENCY_TYPE
@@ -13,17 +13,16 @@ from the_tale.game.logic import create_test_map
 
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.logic import register_user
-from the_tale.accounts.conf import accounts_settings
 
 from the_tale.accounts.clans.conf import clans_settings
+
+from the_tale.game.heroes import logic as heroes_logic
 
 from the_tale.finances.shop.postponed_tasks import BuyPremium, BuyPermanentPurchase
 from the_tale.finances.shop.goods import PremiumDays, PermanentPurchase
 from the_tale.finances.shop import exceptions
 from the_tale.finances.shop.relations import PERMANENT_PURCHASE_TYPE
 from the_tale.finances.shop.conf import payments_settings
-
-from the_tale.game.heroes.prototypes import HeroPrototype
 
 
 class PremiumDaysTests(testcase.TestCase):
@@ -39,7 +38,7 @@ class PremiumDaysTests(testcase.TestCase):
         result, account_id, bundle_id = register_user('test_user', 'test_user@test.com', '111111')
         self.account = AccountPrototype.get_by_id(account_id)
 
-        self.hero = HeroPrototype.get_by_account_id(account_id)
+        self.hero = heroes_logic.load_hero(account_id=account_id)
 
         self.purchase = PremiumDays(uid='premium-days-uid',
                                     name=u'premium-days-name',
@@ -73,7 +72,7 @@ class PremiumDaysTests(testcase.TestCase):
         self.assertEqual(PostponedTaskPrototype._model_class.objects.all().count(), 0)
         self.assertEqual(InvoicePrototype._model_class.objects.all().count(), 0)
 
-        with mock.patch('the_tale.common.postponed_tasks.PostponedTaskPrototype.cmd_wait') as cmd_wait:
+        with mock.patch('the_tale.common.postponed_tasks.prototypes.PostponedTaskPrototype.cmd_wait') as cmd_wait:
             self.purchase.buy(account=self.account)
 
         self.assertEqual(cmd_wait.call_count, 1)
@@ -124,7 +123,7 @@ class PermanentPurchaseTests(testcase.TestCase):
         result, account_id, bundle_id = register_user('test_user', 'test_user@test.com', '111111')
 
         self.account = AccountPrototype.get_by_id(account_id)
-        self.hero = HeroPrototype.get_by_account_id(account_id)
+        self.hero = heroes_logic.load_hero(account_id=account_id)
 
         self.purchase = PermanentPurchase(uid=u'clan-creation-rights',
                                           name=self.PURCHASE_TYPE.text,
@@ -159,7 +158,7 @@ class PermanentPurchaseTests(testcase.TestCase):
         self.assertEqual(PostponedTaskPrototype._model_class.objects.all().count(), 0)
         self.assertEqual(InvoicePrototype._model_class.objects.all().count(), 0)
 
-        with mock.patch('the_tale.common.postponed_tasks.PostponedTaskPrototype.cmd_wait') as cmd_wait:
+        with mock.patch('the_tale.common.postponed_tasks.prototypes.PostponedTaskPrototype.cmd_wait') as cmd_wait:
             self.purchase.buy(account=self.account)
 
         self.assertEqual(cmd_wait.call_count, 1)

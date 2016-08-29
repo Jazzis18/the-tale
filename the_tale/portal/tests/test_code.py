@@ -1,9 +1,8 @@
 # coding: utf-8
 import subprocess
+import importlib
 
-from django.utils.importlib import import_module
 from django.apps import apps as django_apps
-
 from dext.common.utils.urls import url
 from dext.common.utils import storage
 
@@ -80,7 +79,7 @@ class CodeTests(testcase.TestCase):
                                                 ['sys', 'os', 'shutil', 'datetime', 'tempfile', 'subprocess', 'random', 'collections', 're', 'itertools', 'Queue', 'time',
                                                  'jinja2', 'math', 'uuid', 'postmarkup', 'functools', 'urllib2', 'xlrd', 'copy', 'gv', 'string', 'traceback', 'newrelic',
                                                  'markdown', 'md5', 'mock', 'pymorphy', 'numbers', 'gc', 'numpy', 'matplotlib', 'contextlib', 'pynames', 'json', 'PIL', 'deworld',
-                                                 'urllib', 'socket', 'types', 'csv']))
+                                                 'urllib', 'socket', 'types', 'csv', 'getpass', 'logging', 'operator']))
 
     def test_api_urls_not_changed(self):
         self.assertEqual(url('portal:api-info'), '/api/info')
@@ -97,7 +96,7 @@ class CodeTests(testcase.TestCase):
         for application in django_apps.get_app_configs():
             storage_module = '%s.storage' % application.name
             try:
-                module = import_module(storage_module)
+                module = importlib.import_module(storage_module)
             except:
                 continue
 

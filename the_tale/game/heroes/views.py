@@ -4,6 +4,8 @@ import datetime
 
 from django.core.urlresolvers import reverse
 
+from questgen import relations as questgen_relations
+
 from dext.common.utils import views as dext_views
 from dext.views import handler, validator, validate_argument
 
@@ -11,7 +13,7 @@ from the_tale.amqp_environment import environment
 
 from the_tale.common.utils.resources import Resource
 from the_tale.common.utils.decorators import login_required
-from the_tale.common.postponed_tasks import PostponedTaskPrototype
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 
 from the_tale.accounts.prototypes import AccountPrototype
 from the_tale.accounts.clans.prototypes import ClanPrototype
@@ -22,10 +24,9 @@ from the_tale.game import relations as game_relations
 
 from the_tale.game.mobs.storage import mobs_storage
 
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.places import storage as places_storage
 
-from the_tale.game.persons.relations import PERSON_STATE
-from the_tale.game.persons.storage import persons_storage
+from the_tale.game.persons import storage as persons_storage
 
 from the_tale.game import names
 from the_tale.game.relations import HABIT_TYPE
@@ -33,12 +34,12 @@ from the_tale.game.relations import HABIT_TYPE
 from the_tale.game.cards import effects as cards_effects
 from the_tale.game.cards import relations as cards_relations
 
-from . import prototypes
 from . import postponed_tasks
 from . import relations
 from . import forms
 from . import conf
 from . import meta_relations
+from . import logic
 
 from the_tale.game.heroes.habilities import relations as habilities_relations
 
@@ -53,7 +54,7 @@ class CurrentHeroProcessor(dext_views.BaseViewProcessor):
             context.account_hero = None
             return
 
-        context.account_hero = prototypes.HeroPrototype.get_by_account_id(context.account.id)
+        context.account_hero = logic.load_hero(account_id=context.account.id)
 
 
 def split_list(items):
@@ -67,7 +68,7 @@ def split_list(items):
 
 class HeroResource(Resource):
 
-    @validate_argument('hero', prototypes.HeroPrototype.get_by_id, 'heroes', u'Неверный идентификатор героя')
+    @validate_argument('hero', lambda hero_id: logic.load_hero(hero_id=int(hero_id)), 'heroes', u'Неверный идентификатор героя')
     def initialize(self, hero=None, *args, **kwargs):
         super(HeroResource, self).initialize(*args, **kwargs)
         self.hero = hero
@@ -89,7 +90,7 @@ class HeroResource(Resource):
     @login_required
     @handler('my-hero', method='get')
     def my_hero(self):
-        hero = prototypes.HeroPrototype.get_by_account_id(self.account.id)
+        hero = logic.load_hero(account_id=self.account.id)
         return self.redirect(reverse('game:heroes:show', args=[hero.id]))
 
 
@@ -127,6 +128,7 @@ class HeroResource(Resource):
                               'HABIT_TYPE': HABIT_TYPE,
                               'PREFERENCE_RESET_CARDS': cards_effects.PREFERENCE_RESET_CARDS,
                               'CARD_TYPE': cards_relations.CARD_TYPE,
+                              'QUEST_OPTION_MARKERS': questgen_relations.OPTION_MARKERS,
                               'HABITS_BORDER': c.HABITS_BORDER} )
 
     @login_required
@@ -224,7 +226,7 @@ class HeroResource(Resource):
         equipment_slots = None
         favorite_items = None
 
-        all_places = places_storage.all()
+        all_places = places_storage.places.all()
         all_places.sort(key=lambda x: x.name)
 
         if type.is_ENERGY_REGENERATION_TYPE:
@@ -239,11 +241,11 @@ class HeroResource(Resource):
             places = split_list(all_places)
 
         elif type.is_FRIEND:
-            friends = sorted([person for person in persons_storage.filter(state=PERSON_STATE.IN_GAME)],
+            friends = sorted([person for person in persons_storage.persons.all()],
                              key=lambda person: person.name)
 
         elif type.is_ENEMY:
-            enemies = sorted([person for person in persons_storage.filter(state=PERSON_STATE.IN_GAME)],
+            enemies = sorted([person for person in persons_storage.persons.all()],
                              key=lambda person: person.name)
 
         elif type.is_EQUIPMENT_SLOT:
@@ -270,8 +272,8 @@ class HeroResource(Resource):
                              {'type': type,
                               'mobs': mobs,
                               'places': places,
-                              'all_places': places_storage.get_choices(),
-                              'places_powers': {place.id: place.total_persons_power for place in all_places},
+                              'all_places': places_storage.places.get_choices(),
+                              'places_powers': {place.id: place.total_politic_power_fraction for place in all_places},
                               'friends': friends,
                               'enemies': enemies,
                               'equipment_slots': equipment_slots,
@@ -281,6 +283,7 @@ class HeroResource(Resource):
                               'RISK_LEVEL': relations.RISK_LEVEL,
                               'COMPANION_DEDICATION': relations.COMPANION_DEDICATION,
                               'COMPANION_EMPATHY': relations.COMPANION_EMPATHY,
+                              'ENERGY_REGENERATION': relations.ENERGY_REGENERATION,
                               'ARCHETYPE': game_relations.ARCHETYPE} )
 
     @login_required

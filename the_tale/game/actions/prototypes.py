@@ -13,9 +13,10 @@ from the_tale.common.utils import logic as utils_logic
 
 from the_tale.game.prototypes import TimePrototype
 
-from the_tale.game.heroes.relations import MONEY_SOURCE
+from the_tale.game.heroes import relations as heroes_relations
+from the_tale.game.heroes import logic as heroes_logic
 
-from the_tale.game.balance import constants as c, formulas as f, enums as e
+from the_tale.game.balance import constants as c, formulas as f
 
 from the_tale.game.quests import logic as quests_logic
 
@@ -24,8 +25,8 @@ from the_tale.game.mobs.storage import mobs_storage
 
 from the_tale.game.artifacts.storage import artifacts_storage
 
-from the_tale.game.map.roads.storage import waymarks_storage
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.roads.storage import waymarks_storage
+from the_tale.game.places import storage as places_storage
 from the_tale.game.map.storage import map_info_storage
 
 from the_tale.game.abilities.relations import HELP_CHOICES
@@ -64,8 +65,9 @@ class ActionBase(object):
                   'textgen_id',
                   'back',
                   'info_link',
-                  'meta_action_id',
-                  'replane_required')
+                  'saved_meta_action',
+                  'replane_required',
+                  'updated')
 
 
     class STATE:
@@ -81,7 +83,6 @@ class ActionBase(object):
     HABIT_MODE = relations.ACTION_HABIT_MODE.PEACEFUL
 
     def __init__(self,
-                 hero,
                  bundle_id,
                  state,
                  percents=0.0,
@@ -102,8 +103,9 @@ class ActionBase(object):
                  textgen_id=None,
                  back=False,
                  info_link=None,
-                 meta_action_id=None,
-                 replane_required=False):
+                 meta_action=None,
+                 replane_required=False,
+                 hero=None):
 
         self.updated = False
 
@@ -144,7 +146,11 @@ class ActionBase(object):
         self.extra_probability = extra_probability
         self.textgen_id = textgen_id
         self.back = back
-        self.meta_action_id = meta_action_id
+
+        if meta_action is None or isinstance(meta_action, meta_actions.MetaAction):
+            self.saved_meta_action = meta_action
+        else:
+            self.saved_meta_action = meta_actions.ACTION_TYPES[relations.ACTION_TYPE(meta_action['type'])].deserialize(meta_action)
 
         self.info_link = info_link
 
@@ -186,16 +192,16 @@ class ActionBase(object):
             data['textgen_id'] = self.textgen_id
         if self.back:
             data['back'] = self.back
-        if self.meta_action_id is not None:
-            data['meta_action_id'] = self.meta_action_id
+        if self.meta_action is not None:
+            data['meta_action'] = self.meta_action.serialize()
         if self.info_link is not None:
             data['info_link'] = self.info_link
 
         return data
 
     @classmethod
-    def deserialize(cls, hero, data):
-        return cls(hero=hero, **data)
+    def deserialize(cls, data):
+        return cls(**data)
 
     @property
     def ui_type(self): return self.TYPE
@@ -221,7 +227,7 @@ class ActionBase(object):
         self.storage = storage
 
     @property
-    def place(self): return places_storage[self.place_id]
+    def place(self): return places_storage.places[self.place_id]
 
     def get_destination(self): return self.destination_x, self.destination_y
     def set_destination(self, x, y):
@@ -230,9 +236,11 @@ class ActionBase(object):
 
     @property
     def meta_action(self):
+        if self.saved_meta_action is None:
+            return None
         if self.storage is None: # if meta_action accessed from views (not from logic)
-            return meta_actions.get_meta_action_by_id(self.meta_action_id) if self.meta_action_id is not None else None
-        return self.storage.meta_actions.get(self.meta_action_id) if self.meta_action_id is not None else None
+            return self.saved_meta_action
+        return self.storage.meta_actions.get(self.saved_meta_action.uid)
 
     @property
     def help_choices(self):
@@ -339,8 +347,7 @@ class ActionBase(object):
         self.removed = True
 
     def on_save(self):
-        if self.meta_action_id is not None and self.meta_action.updated:
-            self.meta_action.save()
+        pass
 
     def process_action(self):
         self.hero.actions.updated = True
@@ -378,7 +385,7 @@ class ActionBase(object):
             self.hero.add_message(message_type, diary=True, hero=self.hero, **self.action_event_message_arguments())
         elif event_reward.is_MONEY:
             coins = int(math.ceil(f.normal_loot_cost_at_lvl(self.hero.level)))
-            self.hero.change_money(MONEY_SOURCE.EARNED_FROM_HABITS, coins)
+            self.hero.change_money(heroes_relations.MONEY_SOURCE.EARNED_FROM_HABITS, coins)
             self.hero.add_message(message_type, diary=True, hero=self.hero, coins=coins, **self.action_event_message_arguments())
         elif event_reward.is_ARTIFACT:
             artifact, unequipped, sell_price = self.hero.receive_artifact(equip=False, better=False, prefered_slot=False, prefered_item=False, archetype=False)
@@ -536,7 +543,7 @@ class ActionIdlenessPrototype(ActionBase):
                 self.state = self.STATE.QUEST
                 ActionQuestPrototype.create(hero=self.hero)
 
-            elif self.hero.need_regenerate_energy and self.hero.preferences.energy_regeneration_type != e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE:
+            elif self.hero.need_regenerate_energy and not self.hero.preferences.energy_regeneration_type.is_SACRIFICE:
                 ActionRegenerateEnergyPrototype.create(hero=self.hero)
                 self.state = self.STATE.REGENERATE_ENERGY
 
@@ -660,6 +667,7 @@ class ActionMoveToPrototype(ActionBase):
                         break_at=break_at,
                         state=cls.STATE.CHOOSE_ROAD)
         hero.add_message('action_moveto_start', hero=hero, destination=destination)
+        hero.position.move_out_place()
         return prototype
 
     def get_description_arguments(self):
@@ -836,7 +844,7 @@ class ActionMoveToPrototype(ActionBase):
             self.teleport(c.ANGEL_HELP_TELEPORT_DISTANCE, create_inplace_action=True)
             return
 
-        move_speed = self.hero.position.modify_move_speed(self.hero.move_speed)
+        move_speed = self.hero.modify_move_speed(self.hero.move_speed)
 
         delta = move_speed / self.hero.position.road.length
 
@@ -861,11 +869,11 @@ class ActionMoveToPrototype(ActionBase):
 
     def process_moving(self):
 
-        if self.hero.need_regenerate_energy and self.hero.preferences.energy_regeneration_type != e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE:
+        if self.hero.need_regenerate_energy and not self.hero.preferences.energy_regeneration_type.is_SACRIFICE:
             ActionRegenerateEnergyPrototype.create(hero=self.hero)
             self.state = self.STATE.REGENERATE_ENERGY
 
-        elif self.hero.position.is_battle_start_needed():
+        elif self.hero.is_battle_start_needed():
             mob = mobs_storage.create_mob_for_hero(self.hero)
             ActionBattlePvE1x1Prototype.create(hero=self.hero, mob=mob)
             self.state = self.STATE.BATTLE
@@ -936,8 +944,8 @@ class ActionBattlePvE1x1Prototype(ActionBase):
         if not self.hero.is_alive:
             return set((HELP_CHOICES.RESURRECT,))
         if self.mob.health <= 0:
-            return set((HELP_CHOICES.HEAL, HELP_CHOICES.MONEY, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
-        return set((HELP_CHOICES.LIGHTING, HELP_CHOICES.HEAL, HELP_CHOICES.MONEY, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
+            return set((HELP_CHOICES.MONEY, HELP_CHOICES.HEAL, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
+        return set((HELP_CHOICES.MONEY, HELP_CHOICES.LIGHTING, HELP_CHOICES.HEAL, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
 
     class STATE(ActionBase.STATE):
         BATTLE_RUNNING = 'battle_running'
@@ -1000,12 +1008,18 @@ class ActionBattlePvE1x1Prototype(ActionBase):
         args.update({'mob': self.mob})
         return args
 
-    def bit_mob(self, percents):
+    def mob_damage_percents_to_health(self, percents):
+        if self.state != self.STATE.BATTLE_RUNNING:
+            return 0
+
+        return self.mob.damage_percents_to_health(percents)
+
+    def bit_mob(self, damage):
 
         if self.state != self.STATE.BATTLE_RUNNING:
             return False
 
-        self.mob.strike_by(percents)
+        self.mob.health = max(0, self.mob.health - damage)
 
         self.percents = 1.0 - self.mob.health_percents
         self.hero.actions.current_action.percents = self.percents
@@ -1061,7 +1075,7 @@ class ActionBattlePvE1x1Prototype(ActionBase):
             self.hero.companion.health < self.hero.companion.max_health and
             self.hero.can_companion_eat_corpses() and
             random.random() < self.hero.companion_eat_corpses_probability and
-            self.mob.mob_type.is_eatable):
+            self.mob.is_eatable):
             health = self.hero.companion.heal(c.COMPANIONS_EATEN_CORPSES_HEAL_AMOUNT)
             self.hero.add_message('companions_eat_corpse', companion_owner=self.hero, companion=self.hero.companion, health=health, mob=self.mob)
 
@@ -1197,33 +1211,33 @@ class ActionInPlacePrototype(ActionBase):
                          bundle_id=bundle_id,
                          state=cls.STATE.SPEND_MONEY)
 
-        if hero.position.place.modifier:
-            if hero.health < hero.max_health and hero.position.place.modifier.full_regen_allowed():
-                hero.health = hero.max_health
-                hero.add_message('action_inplace_instant_heal', hero=hero, place=hero.position.place)
+        if hero.health < hero.max_health and random.random() < hero.position.place.attrs.hero_regen_chance:
+            hero.health = hero.max_health
+            hero.add_message('action_inplace_instant_heal', hero=hero, place=hero.position.place)
 
-            if hero.companion and hero.companion.health < hero.companion.max_health and hero.position.place.modifier.companion_regen_allowed():
-                healed_health = hero.companion.heal(c.COMPANIONS_HEAL_AMOUNT)
-                hero.add_message('action_inplace_companion_heal', hero=hero, place=hero.position.place, companion=hero.companion, health=healed_health)
+        if hero.companion and hero.companion.health < hero.companion.max_health and random.random() < hero.position.place.attrs.companion_regen_chance:
+            healed_health = hero.companion.heal(c.COMPANIONS_HEAL_AMOUNT)
+            hero.add_message('action_inplace_companion_heal', hero=hero, place=hero.position.place, companion=hero.companion, health=healed_health)
+
+        # process variouse effects only if it is not repeated town visit
+        if hero.position.place == hero.position.previous_place:
+            return prototype
 
         if (hero.energy < hero.energy_maximum and
-            hero.position.place.modifier and hero.position.place.modifier.energy_regen_allowed() and
-            hero.position.place != hero.position.previous_place):
-            hero.change_energy(c.ANGEL_ENERGY_INSTANT_REGENERATION_IN_PLACE)
-            hero.add_message('action_inplace_instant_energy_regen', hero=hero, place=hero.position.place)
+            random.random() < hero.position.place.attrs.energy_regen_chance):
+            energy = hero.change_energy(c.ANGEL_ENERGY_INSTANT_REGENERATION_IN_PLACE)
+            hero.add_message('action_inplace_instant_energy_regen', hero=hero, place=hero.position.place, energy=energy)
 
-        if (hero.position.place.tax > 0 and
-            hero.position.place != hero.position.previous_place):
+        if hero.position.place.attrs.tax > 0:
 
             if hero.money > 0:
-                tax = int(hero.money * hero.position.place.tax)
-                hero.change_money(MONEY_SOURCE.SPEND_FOR_TAX, -tax)
+                tax = int(hero.money * hero.position.place.attrs.tax)
+                hero.change_money(heroes_relations.MONEY_SOURCE.SPEND_FOR_TAX, -tax)
                 hero.add_message('action_inplace_tax', hero=hero, place=hero.position.place, coins=tax, diary=True)
             else:
                 hero.add_message('action_inplace_tax_no_money', hero=hero, place=hero.position.place, diary=True)
 
-        if ( hero.position.place.can_habit_event() and
-             hero.position.place != hero.position.previous_place ):
+        if hero.position.place.can_habit_event():
 
             if random.uniform(0, 1) < 0.5:
                 hero.add_message('action_inplace_habit_event_honor_%s' % hero.position.place.habit_honor.interval.name.lower(),
@@ -1232,14 +1246,14 @@ class ActionInPlacePrototype(ActionBase):
                 hero.add_message('action_inplace_habit_event_peacefulness_%s' % hero.position.place.habit_peacefulness.interval.name.lower(),
                                  hero=hero, place=hero.position.place, diary=True)
 
-        if hero.companion and hero.position.place != hero.position.previous_place and hero.position.previous_place is not None:
-
+        if hero.companion and hero.position.moved_out_place:
             if hero.can_companion_eat():
-                waymark = waymarks_storage.look_for_road(point_from=hero.position.previous_place.id, point_to=hero.position.place)
-                coins = min(hero.money, int(math.ceil(f.gold_in_path(hero.level, waymark.length) * hero.companion_money_for_food_multiplier)+1))
+                expected_coins = ( f.expected_gold_in_day(hero.level) *
+                                   float(TimePrototype.get_current_turn_number() - hero.position.last_place_visited_turn) / (c.TURNS_IN_HOUR * 24) )
+                coins = min(hero.money, int(expected_coins * hero.companion_money_for_food_multiplier))
 
                 if coins > 0:
-                    hero.change_money(MONEY_SOURCE.SPEND_FOR_COMPANIONS, -coins)
+                    hero.change_money(heroes_relations.MONEY_SOURCE.SPEND_FOR_COMPANIONS, -coins)
                     hero.add_message('action_inplace_companion_money_for_food', hero=hero, place=hero.position.place, companion=hero.companion, coins=coins)
 
             if not hero.bag.is_empty and hero.can_companion_drink_artifact() and random.random() < hero.companion_drink_artifact_probability:
@@ -1251,8 +1265,7 @@ class ActionInPlacePrototype(ActionBase):
                 hero.add_message('action_inplace_companion_leave', diary=True, hero=hero, place=hero.position.place, companion=hero.companion)
                 hero.remove_companion()
 
-
-        hero.position.visit_current_place()
+        hero.position.move_in_place() # <- must be last method
 
         return prototype
 
@@ -1267,8 +1280,12 @@ class ActionInPlacePrototype(ActionBase):
     def process(self):
         return self.process_settlement()
 
+    def spend_amount(self):
+        return int(max(1, self.hero.spend_amount * self.hero.buy_price()))
+
     def try_to_spend_money(self):
-        gold_amount = self.hero.modify_buy_price(self.hero.spend_amount)
+        gold_amount = self.spend_amount()
+
         if gold_amount <= self.hero.money:
             self.hero.change_money(self.hero.next_spending.money_source, -gold_amount)
             self.hero.switch_spending()
@@ -1278,12 +1295,14 @@ class ActionInPlacePrototype(ActionBase):
 
     def spend_money__instant_heal(self):
         if self.hero.health > self.hero.max_health * c.SPEND_MONEY_FOR_HEAL_HEALTH_FRACTION:
+            if self.spend_amount() <= self.hero.money:
+                self.hero.switch_spending()
             return
 
         coins = self.try_to_spend_money()
         if coins is not None:
-            self.hero.health = self.hero.max_health
-            self.hero.add_message('action_inplace_diary_instant_heal_for_money', diary=True, hero=self.hero, coins=coins)
+            healed_health = self.hero.heal(self.hero.max_health)
+            self.hero.add_message('action_inplace_diary_instant_heal_for_money', diary=True, hero=self.hero, coins=coins, health=healed_health)
 
     def spend_money__buying_artifact(self):
         if self.hero.need_equipping:
@@ -1303,7 +1322,7 @@ class ActionInPlacePrototype(ActionBase):
             if unequipped is not None:
                 if artifact.id == unequipped.id:
                     self.hero.add_message('action_inplace_diary_buying_artifact_and_change_equal_items', diary=True,
-                                          hero=self.hero, artifact=artifact, coins=coins, sell_price=sell_price, coins_delta=coins-sell_price)
+                                          hero=self.hero, artifact=artifact, coins=coins, sell_price=sell_price)
                 else:
                     self.hero.add_message('action_inplace_diary_buying_artifact_and_change', diary=True,
                                           hero=self.hero, artifact=artifact, coins=coins, old_artifact=unequipped, sell_price=sell_price)
@@ -1356,8 +1375,11 @@ class ActionInPlacePrototype(ActionBase):
             if not self.hero.can_change_person_power(person):
                 return
 
-            power, positive_bonus, negative_bonus = self.hero.modify_politics_power(power_direction*f.person_power_for_quest(c.QUEST_AREA_RADIUS), person=person)
-            person.cmd_change_power(power, positive_bonus, negative_bonus)
+            power = self.hero.modify_politics_power(power_direction*f.person_power_for_quest(c.QUEST_AREA_RADIUS), person=person)
+            person.cmd_change_power(hero_id=self.hero.id,
+                                    has_place_in_preferences=self.hero.preferences.has_place_in_preferences(person.place),
+                                    has_person_in_preferences=self.hero.preferences.has_place_in_preferences(person),
+                                    power=power)
 
     def spend_money__experience(self):
         coins = self.try_to_spend_money()
@@ -1370,9 +1392,12 @@ class ActionInPlacePrototype(ActionBase):
 
     def spend_money__heal_companion(self):
         if self.hero.companion is None:
+            self.hero.switch_spending()
             return
 
         if self.hero.companion.health == self.hero.companion.max_health:
+            if self.spend_amount() <= self.hero.money:
+                self.hero.switch_spending()
             return
 
         coins = self.try_to_spend_money()
@@ -1415,9 +1440,12 @@ class ActionInPlacePrototype(ActionBase):
         if self.hero.companion is None:
             return
 
+        if self.hero.position.place == self.hero.position.previous_place:
+            return
+
         if self.hero.can_companion_steal_money():
             money = int(f.normal_loot_cost_at_lvl(self.hero.level) * random.uniform(0.8, 1.2) * self.hero.companion_steal_money_modifier) + 1
-            self.hero.change_money(MONEY_SOURCE.EARNED_FROM_COMPANIONS, money)
+            self.hero.change_money(heroes_relations.MONEY_SOURCE.EARNED_FROM_COMPANIONS, money)
             self.hero.add_message('action_inplace_companion_steal_money', hero=self.hero, place=self.hero.position.place, companion=self.hero.companion, coins=money)
 
         if self.hero.can_companion_steal_item() and not self.hero.bag_is_full:
@@ -1447,7 +1475,7 @@ class ActionInPlacePrototype(ActionBase):
             if random.uniform(0, 1) < c.HABIT_IN_PLACE_EVENTS_IN_TURN:
                 self.do_events()
 
-            if self.hero.need_regenerate_energy and self.hero.preferences.energy_regeneration_type != e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE:
+            if self.hero.need_regenerate_energy and not self.hero.preferences.energy_regeneration_type.is_SACRIFICE:
                 self.state = self.STATE.REGENERATE_ENERGY
                 ActionRegenerateEnergyPrototype.create(hero=self.hero)
 
@@ -1472,6 +1500,7 @@ class ActionInPlacePrototype(ActionBase):
 
         if self.state == self.STATE.PROCESSED:
             self.process_companion_stealing()
+            self.hero.position.update_previous_place()
 
 
 class ActionRestPrototype(ActionBase):
@@ -1590,6 +1619,10 @@ class ActionTradingPrototype(ActionBase):
 
     def process(self):
 
+        if self.replane_required:
+            self.state = self.STATE.PROCESSED
+            return
+
         if self.state == self.STATE.TRADING:
 
             if not self.hero.bag.is_empty:
@@ -1656,6 +1689,7 @@ class ActionMoveNearPlacePrototype(ActionBase):
         from_x, from_y = hero.position.cell_coordinates
 
         hero.position.set_coordinates(from_x, from_y, x, y, percents=0)
+        hero.position.move_out_place()
 
         return prototype
 
@@ -1706,11 +1740,11 @@ class ActionMoveNearPlacePrototype(ActionBase):
     def process_moving(self):
 
 
-        if self.hero.need_regenerate_energy and self.hero.preferences.energy_regeneration_type != e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE:
+        if self.hero.need_regenerate_energy and not self.hero.preferences.energy_regeneration_type.is_SACRIFICE:
             ActionRegenerateEnergyPrototype.create(hero=self.hero)
             self.state = self.STATE.REGENERATE_ENERGY
 
-        elif self.hero.position.is_battle_start_needed():
+        elif self.hero.is_battle_start_needed():
             mob = mobs_storage.create_mob_for_hero(self.hero)
             ActionBattlePvE1x1Prototype.create(hero=self.hero, mob=mob)
             self.state = self.STATE.BATTLE
@@ -1728,7 +1762,7 @@ class ActionMoveNearPlacePrototype(ActionBase):
             if self.hero.position.subroad_len() == 0:
                 self.hero.position.percents += 0.1
             else:
-                move_speed = self.hero.position.modify_move_speed(self.hero.move_speed)
+                move_speed = self.hero.modify_move_speed(self.hero.move_speed)
                 delta = move_speed / self.hero.position.subroad_len()
                 self.hero.position.percents += delta
 
@@ -1790,7 +1824,7 @@ class ActionRegenerateEnergyPrototype(ActionBase):
 
     TYPE = relations.ACTION_TYPE.REGENERATE_ENERGY
     TEXTGEN_TYPE = 'action_regenerate_energy'
-    HELP_CHOICES = set((HELP_CHOICES.HEAL, HELP_CHOICES.MONEY, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
+    HELP_CHOICES = set((HELP_CHOICES.MONEY, HELP_CHOICES.HEAL, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
 
     class STATE(ActionBase.STATE):
         REGENERATE = 'REGENERATE'
@@ -1801,33 +1835,28 @@ class ActionRegenerateEnergyPrototype(ActionBase):
 
     @classmethod
     def _create(cls, hero, bundle_id):
+        textgen_id = 'action_regenerate_energy_%s' % random.choice(hero.preferences.energy_regeneration_type.linguistics_slugs)
+
         prototype = cls( hero=hero,
                          bundle_id=bundle_id,
-                         state=cls.STATE.REGENERATE)
+                         state=cls.STATE.REGENERATE,
+                         textgen_id=textgen_id)
 
-        hero.add_message('action_regenerate_energy_start_%s' % cls.regeneration_slug(hero.preferences.energy_regeneration_type), hero=hero)
+        hero.add_message('%s_start' % textgen_id, hero=hero)
 
         return prototype
 
     @property
     def description_text_name(self):
-        return '%s_description_%s' % (self.TEXTGEN_TYPE, self.regeneration_slug(self.regeneration_type))
+        return '%s_description' % self.textgen_id
 
 
     @property
     def regeneration_type(self):
         return self.hero.preferences.energy_regeneration_type
 
-    @classmethod
-    def regeneration_slug(cls, regeneration_type):
-        return { e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY: 'pray',
-                 e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE: 'sacrifice',
-                 e.ANGEL_ENERGY_REGENERATION_TYPES.INCENSE: 'incense',
-                 e.ANGEL_ENERGY_REGENERATION_TYPES.SYMBOLS: 'symbols',
-                 e.ANGEL_ENERGY_REGENERATION_TYPES.MEDITATION: 'meditation' }[regeneration_type]
-
     def step_percents(self):
-        return 1.0 / c.ANGEL_ENERGY_REGENERATION_STEPS[self.regeneration_type]
+        return 1.0 / self.regeneration_type.length
 
     def process(self):
 
@@ -1837,13 +1866,13 @@ class ActionRegenerateEnergyPrototype(ActionBase):
 
             if self.percents >= 1:
                 multiplier = 2 if self.hero.can_regenerate_double_energy else 1
-                energy_delta = self.hero.change_energy(f.angel_energy_regeneration_amount(self.regeneration_type)*multiplier)
+                energy_delta = self.hero.change_energy(self.regeneration_type.amount * multiplier)
                 self.hero.last_energy_regeneration_at_turn = TimePrototype.get_current_turn_number()
 
                 if energy_delta:
-                    self.hero.add_message('action_regenerate_energy_energy_received_%s' % self.regeneration_slug(self.regeneration_type), hero=self.hero, energy=energy_delta)
+                    self.hero.add_message('%s_energy_received' % self.textgen_id, hero=self.hero, energy=energy_delta)
                 else:
-                    self.hero.add_message('action_regenerate_energy_no_energy_received_%s' % self.regeneration_slug(self.regeneration_type), hero=self.hero)
+                    self.hero.add_message('%s_no_energy_received' % self.textgen_id, hero=self.hero, energy=0)
 
                 self.state = self.STATE.PROCESSED
 
@@ -1894,7 +1923,7 @@ class ActionMetaProxyPrototype(ActionBase):
     SINGLE = False
     TYPE = relations.ACTION_TYPE.META_PROXY
     TEXTGEN_TYPE = 'no texgen type'
-    HELP_CHOICES = set((HELP_CHOICES.HEAL, HELP_CHOICES.MONEY, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
+    HELP_CHOICES = set((HELP_CHOICES.MONEY, HELP_CHOICES.EXPERIENCE, HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.HEAL_COMPANION))
     APPROVED_FOR_STEPS_CHAIN = False
 
     @property
@@ -1902,7 +1931,12 @@ class ActionMetaProxyPrototype(ActionBase):
         return self.meta_action.description_text_name
 
     def get_description_arguments(self):
-        hero_2 = self.meta_action.hero_2 if self.hero.id == self.meta_action.hero_1.id else self.meta_action.hero_1
+        if self.meta_action.storage:
+            hero_2 = self.meta_action.hero_2 if self.hero.id == self.meta_action.hero_1_id else self.meta_action.hero_1
+        else:
+            hero_2_id = self.meta_action.hero_2_id if self.hero.id == self.meta_action.hero_1_id else self.meta_action.hero_1_id
+            hero_2 = heroes_logic.load_hero(hero_id=hero_2_id)
+
         return {'duelist_1': self.hero,
                 'duelist_2': hero_2}
 
@@ -1918,7 +1952,7 @@ class ActionMetaProxyPrototype(ActionBase):
     def _create(cls, hero, bundle_id, meta_action):
         return cls( hero=hero,
                     bundle_id=bundle_id,
-                    meta_action_id=meta_action.id,
+                    meta_action=meta_action,
                     state=meta_action.state)
 
     def process(self):
@@ -1978,11 +2012,7 @@ class ActionHealCompanionPrototype(ActionBase):
             health = self.hero.companion.heal(utils_logic.randint_from_1(c.COMPANIONS_REGEN_ON_HEAL_AMOUNT))
             self.hero.add_message('companions_regenerate', companion_owner=self.hero, companion=self.hero.companion, health=health)
 
-        if (self.hero.companion.health < self.hero.companion.max_health and
-            ( (self.hero.companion.type.is_LIVING and random.random() < self.hero.companion_living_heal_probability) or
-              (self.hero.companion.type.is_CONSTRUCT and random.random() < self.hero.companion_construct_heal_probability) or
-              (self.hero.companion.type.is_UNUSUAL and random.random() < self.hero.companion_unusual_heal_probability) )
-              ):
+        if (self.hero.companion.health < self.hero.companion.max_health and random.random() < self.hero.companion_heal_probability):
             health = self.hero.companion.heal(utils_logic.randint_from_1(c.COMPANIONS_REGEN_BY_HERO))
             self.hero.add_message('hero_ability_companion_healing', actor=self.hero, companion=self.hero.companion, health=health)
 

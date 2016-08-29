@@ -4,7 +4,7 @@ from the_tale.game.abilities.relations import ABILITY_TYPE
 
 from the_tale.game.postponed_tasks import ComplexChangeTask
 
-from the_tale.game.map.places import storage as places_storage
+from the_tale.game.places import storage as places_storage
 
 
 
@@ -21,7 +21,7 @@ class UseAbilityTask(ComplexChangeTask):
         data = {}
 
         if self.data.get('building_id') is not None:
-            building = places_storage.buildings_storage[self.data['building_id']]
+            building = places_storage.buildings[self.data['building_id']]
             data['building'] = { 'new_building_integrity': building.integrity,
                                  'workers_to_full_repairing': building.workers_to_full_repairing }
 

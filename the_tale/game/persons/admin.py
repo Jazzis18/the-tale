@@ -2,33 +2,20 @@
 
 from django.contrib import admin
 
-from the_tale.game.persons import models
-from the_tale.game.persons.prototypes import PersonPrototype
+from . import models
+from . import logic
+
 
 class PersonAdmin(admin.ModelAdmin):
-    list_display = ('id', 'place', 'state', 'type', 'name', 'power', 'raw_power', 'positive_bonus', 'negative_bonus', 'created_at', 'out_game_at')
+    list_display = ('id', 'place', 'type', 'name', 'politic_power', 'created_at')
 
-    list_filter = ('state', 'type', 'place')
+    list_filter = ('gender', 'race', 'type', 'place')
 
-    def power(self, obj):
-        person = PersonPrototype(obj)
-        return int(person.power)
-
-    def raw_power(self, obj):
-        person = PersonPrototype(obj)
-        return int(person.raw_power)
-
-    def positive_bonus(self, obj):
-        person = PersonPrototype(obj)
-        return round(person.power_positive, 2)
-
-    def negative_bonus(self, obj):
-        person = PersonPrototype(obj)
-        return round(person.power_negative, 2)
+    def politic_power(self, obj):
+        return logic.load_person(person_model=obj).politic_power
 
     def name(self, obj):
-        from the_tale.game.persons.prototypes import PersonPrototype
-        return PersonPrototype(model=obj).name
+        return logic.load_person(person_model=obj).name
 
 
 class SocialConnectionAdmin(admin.ModelAdmin):

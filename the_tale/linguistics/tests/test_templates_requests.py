@@ -170,9 +170,9 @@ class CreateRequestsTests(BaseRequestsTests):
         self.assertEqual(len(template.verificators), 4)
 
         self.assertEqual(template.verificators[0], prototypes.Verificator(text=u'Призрак 13 неизвестное слово', externals={'hero': (u'герой', u''), 'level': (1, u'')}))
-        self.assertEqual(template.verificators[1], prototypes.Verificator(text=u'Привидение 13', externals={'hero': (u'рыцарь', u'мн'), 'level': (2, u'')}))
-        self.assertEqual(template.verificators[2], prototypes.Verificator(text=u'', externals={'hero': (u'привидение', u''), 'level': (5, u'')}))
-        self.assertEqual(template.verificators[3], prototypes.Verificator(text=u'', externals={'hero': (u'героиня', u''), 'level': (5, u'')}))
+        self.assertEqual(template.verificators[1], prototypes.Verificator(text=u'Привидение 13', externals={'hero': (u'привидение', u''), 'level': (2, u'')}))
+        self.assertEqual(template.verificators[2], prototypes.Verificator(text=u'', externals={'hero': (u'героиня', u''), 'level': (5, u'')}))
+        self.assertEqual(template.verificators[3], prototypes.Verificator(text=u'', externals={'hero': (u'рыцарь', u'мн'), 'level': (1, u'')}))
 
         self.assertEqual(template.author_id, self.account_1.id)
         self.assertEqual(template.parent_id, None)
@@ -1697,7 +1697,7 @@ class ChangeKeyTests(BaseRequestsTests):
         self.assertEqual(self.template.key, self.key_2)
         self.assertTrue(self.template.state.is_ON_REVIEW)
         self.assertEqual(self.template.parent_id, None)
-        self.assertEqual(self.template.verificators, [])
+        self.assertEqual(self.template.verificators, self.verificators[:2])
 
     def test_success__author_on_review(self):
         self.template.state = relations.TEMPLATE_STATE.ON_REVIEW
@@ -1712,7 +1712,7 @@ class ChangeKeyTests(BaseRequestsTests):
         self.assertEqual(self.template.key, self.key_2)
         self.assertTrue(self.template.state.is_ON_REVIEW)
         self.assertEqual(self.template.parent_id, None)
-        self.assertEqual(self.template.verificators, [])
+        self.assertEqual(self.template.verificators, self.verificators[:2])
 
     def test__author_in_game(self):
         self.template.state = relations.TEMPLATE_STATE.IN_GAME

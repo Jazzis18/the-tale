@@ -17,13 +17,13 @@ from the_tale.game.balance.power import Power, PowerDistribution
 from the_tale.game.heroes.habilities import ABILITIES, ABILITY_AVAILABILITY, ABILITY_TYPE
 
 
-class Messanger(object):
+class Messenger(object):
 
     def add_message(self, *argv, **kwargs):
         pass
 
 
-MESSANGER = Messanger()
+MESSENGER = Messenger()
 
 TEST_BATTLES_NUMBER = 40
 LEVEL = 5
@@ -39,7 +39,7 @@ def process_battle(hero_1, hero_2):
     while hero_1.health > 0 and hero_2.health > 0:
         battle.make_turn(battle.Actor(hero_1, hero_1_context),
                          battle.Actor(hero_2, hero_2_context ),
-                         MESSANGER)
+                         MESSENGER)
 
     return hero_1.health > 0
 
@@ -50,7 +50,7 @@ def get_battles_statistics(hero_1, hero_2):
 
     for hero_level in HERO_LEVELS:
 
-        with mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.power', Power.power_to_level(POWER_DISTRIBUTION, hero_level)):
+        with mock.patch('the_tale.game.heroes.objects.Hero.power', Power.power_to_level(POWER_DISTRIBUTION, hero_level)):
             hero_1._model.level = hero_level
             hero_2._model.level = hero_level
 

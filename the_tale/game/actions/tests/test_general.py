@@ -3,9 +3,6 @@ import mock
 
 from the_tale.common.utils import testcase
 
-from the_tale.accounts.logic import register_user
-from the_tale.accounts.prototypes import AccountPrototype
-
 from the_tale.game.logic_storage import LogicStorage
 
 from the_tale.game.logic import create_test_map
@@ -19,8 +16,11 @@ from the_tale.game.mobs.storage import mobs_storage
 
 from the_tale.game.abilities.relations import HELP_CHOICES
 
-from the_tale.game.actions.prototypes import ACTION_TYPES
-from the_tale.game.actions.tests.helpers import TestAction
+from the_tale.game.heroes import logic as heroes_logic
+
+from .. import meta_actions
+from ..prototypes import ACTION_TYPES
+from .helpers import TestAction
 
 
 class GeneralTest(testcase.TestCase):
@@ -29,14 +29,15 @@ class GeneralTest(testcase.TestCase):
         super(GeneralTest, self).setUp()
         create_test_map()
 
-        result, account_id, bundle_id = register_user('test_user')
-
-        self.bundle_id = bundle_id
+        self.account = self.accounts_factory.create_account()
 
         self.storage = LogicStorage()
-        self.storage.load_account_data(AccountPrototype.get_by_id(account_id))
-        self.hero = self.storage.accounts_to_heroes[account_id]
+        self.storage.load_account_data(self.account)
+        self.hero = self.storage.accounts_to_heroes[self.account.id]
+
         self.action_idl = self.hero.actions.current_action
+
+        self.bundle_id = self.action_idl.bundle_id
 
     def tearDown(self):
         pass
@@ -44,6 +45,12 @@ class GeneralTest(testcase.TestCase):
     def test_HELP_CHOICES(self):
         for action_class in ACTION_TYPES.values():
             self.assertTrue('HELP_CHOICES' in action_class.__dict__)
+            if (not action_class.TYPE.is_IDLENESS and           # TODO: check
+                not action_class.TYPE.is_BATTLE_PVE_1X1 and     # TODO: check
+                not action_class.TYPE.is_MOVE_TO and            # TODO: check
+                not action_class.TYPE.is_HEAL_COMPANION and
+                not action_class.TYPE.is_RESURRECT):
+                self.assertIn(HELP_CHOICES.MONEY, action_class.HELP_CHOICES) # every action MUST has MONEY choice, or it will be great disbalance in energy & experience receiving
 
     def test_TEXTGEN_TYPE(self):
         for action_class in ACTION_TYPES.values():
@@ -117,7 +124,7 @@ class GeneralTest(testcase.TestCase):
         self.check_heal_companion_in_choices(False)
 
     @mock.patch('the_tale.game.actions.prototypes.ActionIdlenessPrototype.HELP_CHOICES', set((HELP_CHOICES.HEAL_COMPANION,)))
-    @mock.patch('the_tale.game.heroes.prototypes.HeroPrototype.companion_heal_disabled', lambda hero: True)
+    @mock.patch('the_tale.game.heroes.objects.Hero.companion_heal_disabled', lambda hero: True)
     def test_help_choice_has_heal_companion__for_companion_heal_disabled(self):
         companion_record = companions_storage.companions.enabled_companions().next()
         self.hero.set_companion(companions_logic.create_companion(companion_record))
@@ -153,7 +160,7 @@ class GeneralTest(testcase.TestCase):
 
     @mock.patch('the_tale.game.actions.prototypes.ActionIdlenessPrototype.HELP_CHOICES', set((HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.MONEY)))
     def test_help_choice_has_stock_up_energy__can_stock(self):
-        self.hero.energy_charges = 0
+        self.hero.energy_bonus = 0
         self.check_stock_up_energy_in_choices(True)
 
     @mock.patch('the_tale.game.actions.prototypes.ActionIdlenessPrototype.HELP_CHOICES', set((HELP_CHOICES.STOCK_UP_ENERGY, HELP_CHOICES.MONEY)))
@@ -173,12 +180,12 @@ class GeneralTest(testcase.TestCase):
     def test_help_choice_heal_not_in_choices_for_dead_hero(self):
 
         self.hero.health = 1
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
 
         self.assertTrue(HELP_CHOICES.HEAL in self.action_idl.help_choices)
 
         self.hero.kill()
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
 
         self.assertFalse(HELP_CHOICES.HEAL in self.action_idl.help_choices)
 
@@ -196,12 +203,20 @@ class GeneralTest(testcase.TestCase):
                                                       'description': None,
                                                       'type': TestAction.TYPE.value,
                                                       'created_at_turn': TimePrototype.get_current_turn_number()})
-
-        self.assertEqual(default_action, TestAction.deserialize(self.hero, default_action.serialize()))
-
+        deserialized_action = TestAction.deserialize(default_action.serialize())
+        deserialized_action.hero = self.hero
+        self.assertEqual(default_action, deserialized_action)
 
     def test_action_full_serialization(self):
         mob = mobs_storage.create_mob_for_hero(self.hero)
+
+        account_2 = self.accounts_factory.create_account()
+
+        self.storage.load_account_data(account_2)
+        hero_2 = self.storage.accounts_to_heroes[account_2.id]
+
+
+        meta_action = meta_actions.ArenaPvP1x1.create(self.storage, self.hero, hero_2)
 
         default_action = TestAction( hero=self.hero,
                                      bundle_id=self.bundle_id,
@@ -222,7 +237,7 @@ class GeneralTest(testcase.TestCase):
                                      textgen_id='textgen_id',
                                      back=True,
                                      info_link='/bla-bla',
-                                     meta_action_id=7,
+                                     meta_action=meta_action,
                                      replane_required=True)
 
         self.assertEqual(default_action.serialize(), {'bundle_id': self.bundle_id,
@@ -230,7 +245,6 @@ class GeneralTest(testcase.TestCase):
                                                       'context': TestAction.CONTEXT_MANAGER().serialize(),
                                                       'mob_context': TestAction.CONTEXT_MANAGER().serialize(),
                                                       'mob': mob.serialize(),
-                                                      'meta_action_id': 7,
                                                       'length': 777,
                                                       'back': True,
                                                       'textgen_id': 'textgen_id',
@@ -246,6 +260,8 @@ class GeneralTest(testcase.TestCase):
                                                       'data': {'xxx': 'yyy'},
                                                       'info_link': '/bla-bla',
                                                       'break_at': 0.75,
+                                                      'meta_action': meta_action.serialize(),
                                                       'replane_required': True})
-
-        self.assertEqual(default_action, TestAction.deserialize(self.hero, default_action.serialize()))
+        deserialized_action = TestAction.deserialize(default_action.serialize())
+        deserialized_action.hero = self.hero
+        self.assertEqual(default_action, deserialized_action)

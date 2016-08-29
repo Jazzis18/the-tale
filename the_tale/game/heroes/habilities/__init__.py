@@ -47,7 +47,7 @@ class AbilitiesPrototype(object):
         return data
 
     @classmethod
-    def deserialize(cls, hero, data):
+    def deserialize(cls, data):
         abilities = cls()
 
         for ability_id, ability_data in data['abilities'].items():
@@ -56,7 +56,6 @@ class AbilitiesPrototype(object):
 
         abilities.reseted_at = datetime.datetime.fromtimestamp(data.get('reseted_at', 0))
         abilities.destiny_points_spend = data.get('destiny_points_spend', 0)
-        abilities.hero = hero
 
         return abilities
 
@@ -267,10 +266,6 @@ class AbilitiesPrototype(object):
     @property
     def can_choose_new_ability(self):
         return self.current_ability_points_number < self.max_ability_points_number
-
-    @property
-    def destiny_points_remained(self):
-        return self.max_ability_points_number - self.current_ability_points_number
 
     @property
     def destiny_points(self):

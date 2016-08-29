@@ -9,7 +9,8 @@ from django.test import client
 from dext.common.utils.urls import url
 
 from the_tale.common.utils.testcase import TestCase
-from the_tale.common.postponed_tasks import PostponedTask, PostponedTaskPrototype
+from the_tale.common.postponed_tasks.models import PostponedTask
+from the_tale.common.postponed_tasks.prototypes import PostponedTaskPrototype
 from the_tale.common.utils.permissions import sync_group
 
 from the_tale.accounts.logic import register_user, login_page_url
@@ -23,11 +24,9 @@ from the_tale.game.logic import create_test_map
 
 from the_tale.game import names
 
-from the_tale.game.cards import relations as cards_relations
-from the_tale.game.cards import objects as cards_objects
-
 from .. import relations
 from .. import meta_relations
+from .. import logic
 
 
 class HeroRequestsTestBase(TestCase):
@@ -96,7 +95,7 @@ class HeroPageRequestsTests(HeroRequestsTestBase):
     def test_can_reset_abilities(self):
         self.hero.abilities.set_reseted_at(datetime.datetime.fromtimestamp(0))
         self.hero.abilities.updated = True
-        self.hero.save()
+        logic.save_hero(self.hero)
         self.check_html_ok(self.request_html(url('game:heroes:show', self.hero.id)),
                            texts=(('pgf-reset-abilities-timeout-button', 0),
                                   ('pgf-reset-abilities-button', 1)))
@@ -162,8 +161,8 @@ class ChangePreferencesRequestsTests(HeroRequestsTestBase):
         super(ChangePreferencesRequestsTests, self).setUp()
 
     def test_chooce_preferences_dialog(self):
-        self.hero._model.level = relations.PREFERENCE_TYPE.EQUIPMENT_SLOT.level_required
-        self.hero.save()
+        self.hero.level = relations.PREFERENCE_TYPE.EQUIPMENT_SLOT.level_required
+        logic.save_hero(self.hero)
 
         for preference_type in relations.PREFERENCE_TYPE.records:
             texts = []
@@ -178,7 +177,7 @@ class ChangeHeroRequestsTests(HeroRequestsTestBase):
 
     def test_hero_page_change_name_warning_hidden(self):
         self.hero.settings_approved = True
-        self.hero.save()
+        logic.save_hero(self.hero)
         self.check_html_ok(self.request_html(url('game:heroes:show', self.hero.id)), texts=[('pgf-settings-approved-warning', 0)])
 
     def get_post_data(self, name=u'новое имя', gender=GENDER.MASCULINE, race=RACE.DWARF):
@@ -220,7 +219,7 @@ class ResetAbilitiesRequestsTests(HeroRequestsTestBase):
 
         self.hero.abilities.set_reseted_at(datetime.datetime.fromtimestamp(0))
         self.hero.abilities.updated = True
-        self.hero.save()
+        logic.save_hero(self.hero)
 
     def test_wrong_ownership(self):
         result, account_id, bundle_id = register_user('test_user_2', 'test_user_2@test.com', '111111')
@@ -232,7 +231,7 @@ class ResetAbilitiesRequestsTests(HeroRequestsTestBase):
     def test_reset_timeout(self):
         self.hero.abilities.set_reseted_at(datetime.datetime.now())
         self.hero.abilities.updated = True
-        self.hero.save()
+        logic.save_hero(self.hero)
         self.check_ajax_error(self.post_ajax_json(url('game:heroes:reset-abilities', self.hero.id)),
                               'heroes.reset_abilities.reset_timeout')
 
@@ -267,8 +266,8 @@ class ResetNameRequestsTests(HeroRequestsTestBase):
         self.check_ajax_error(self.client.post(url('game:heroes:reset-name', self.hero.id)), 'heroes.moderator_rights_required')
 
     def test_change_hero(self):
-        self.hero._model.name = '111'
-        self.hero.save()
+        self.hero.set_utg_name(names.generator.get_test_name('x'))
+        logic.save_hero(self.hero)
 
         self.assertEqual(PostponedTask.objects.all().count(), 0)
         response = self.client.post(url('game:heroes:reset-name', self.hero.id))

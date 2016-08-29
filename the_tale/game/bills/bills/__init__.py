@@ -12,6 +12,7 @@ from the_tale.game.bills.bills.place_resource_conversion import PlaceResourceCon
 from the_tale.game.bills.bills.bill_decline import BillDecline
 from the_tale.game.bills.bills.person_chronicle import PersonChronicle
 from the_tale.game.bills.bills.place_chronicle import PlaceChronicle
+from the_tale.game.bills.bills.person_move import PersonMove
 
 
 BILLS = [PlaceRenaming,
@@ -25,7 +26,8 @@ BILLS = [PlaceRenaming,
          PlaceResourceConversion,
          BillDecline,
          PersonChronicle,
-         PlaceChronicle]
+         PlaceChronicle,
+         PersonMove]
 
 def deserialize_bill(data):
     return BILLS_BY_STR[data['type']].deserialize(data)
@@ -33,3 +35,5 @@ def deserialize_bill(data):
 
 BILLS_BY_ID = dict( (bill.type.value, bill) for bill in BILLS)
 BILLS_BY_STR = dict( (bill.type.name.lower(), bill) for bill in BILLS)
+
+BILLS_BY_STR['place_modifier'] = BILLS_BY_STR['place_change_modifier'] # TODO: remove after migrate all saved bills to new name

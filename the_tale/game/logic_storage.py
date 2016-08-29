@@ -4,14 +4,17 @@ import time
 import datetime
 import contextlib
 
+from django.conf import settings as project_settings
+
 from dext.common.utils import cache
 
-from the_tale.game.heroes.prototypes import HeroPrototype
 from the_tale.game.heroes.conf import heroes_settings
 
 from the_tale.game import exceptions
 from the_tale.game import conf
 from the_tale.game.prototypes import TimePrototype
+
+from the_tale.game.heroes import logic as heroes_logic
 
 
 class LogicStorage(object):
@@ -30,7 +33,7 @@ class LogicStorage(object):
         self.cache_queue = set()
 
     def load_account_data(self, account):
-        hero = HeroPrototype.get_by_account_id(account.id)
+        hero = heroes_logic.load_hero(account_id=account.id)
         hero.update_with_account_data(is_fast=account.is_fast,
                                       premium_end_at=account.premium_end_at,
                                       active_end_at=account.active_end_at,
@@ -74,7 +77,7 @@ class LogicStorage(object):
         self.process_cache_queue()
 
     def _save_hero_data(self, hero_id):
-        self.heroes[hero_id].save()
+        heroes_logic.save_hero(self.heroes[hero_id])
 
     def _add_hero(self, hero):
 
@@ -119,23 +122,17 @@ class LogicStorage(object):
     def add_action(self, action):
         action.set_storage(self)
 
-        if action.meta_action_id is not None:
+        if action.saved_meta_action is not None:
 
-            if action.meta_action_id not in self.meta_actions_to_actions:
-                self.meta_actions_to_actions[action.meta_action_id] = set()
-            self.meta_actions_to_actions[action.meta_action_id].add(self.get_action_uid(action))
+            meta_action_uid = action.saved_meta_action.uid
 
-            if action.meta_action_id not in self.meta_actions:
-                from the_tale.game.actions.models import MetaAction
-                from the_tale.game.actions.meta_actions import get_meta_action_by_model
-                self.add_meta_action(get_meta_action_by_model(MetaAction.objects.get(id=action.meta_action_id)))
+            if meta_action_uid not in self.meta_actions_to_actions:
+                self.meta_actions_to_actions[meta_action_uid] = set()
+            self.meta_actions_to_actions[meta_action_uid].add(self.get_action_uid(action))
 
-
-    def add_meta_action(self, meta_action):
-        if meta_action.id in self.meta_actions:
-            raise exceptions.GameError('Meta action with id "%d" has already registerd in storage' % meta_action.id)
-        meta_action.set_storage(self)
-        self.meta_actions[meta_action.id] = meta_action
+            if meta_action_uid not in self.meta_actions:
+                self.meta_actions[meta_action_uid] = action.saved_meta_action
+                action.meta_action.set_storage(self)
 
     def remove_action(self, action):
         action.set_storage(None)
@@ -143,12 +140,15 @@ class LogicStorage(object):
         if last_action is not action:
             raise exceptions.RemoveActionFromMiddleError(action=action, last_action=last_action, actions_list=action.hero.actions.actions_list)
 
-        if action.meta_action_id is not None:
-            self.meta_actions_to_actions[action.meta_action_id].remove(self.get_action_uid(action))
-            if not self.meta_actions_to_actions[action.meta_action_id]:
-                del self.meta_actions_to_actions[action.meta_action_id]
-                self.meta_actions[action.meta_action_id].remove()
-                del self.meta_actions[action.meta_action_id]
+        if action.meta_action is not None:
+
+            meta_action_uid = action.saved_meta_action.uid
+
+            self.meta_actions_to_actions[meta_action_uid].remove(self.get_action_uid(action))
+
+            if not self.meta_actions_to_actions[meta_action_uid]:
+                del self.meta_actions_to_actions[meta_action_uid]
+                del self.meta_actions[meta_action_uid]
 
     @classmethod
     def get_action_uid(cls, action):
@@ -156,8 +156,7 @@ class LogicStorage(object):
         return (action.hero.id, number - 1 if action is action.hero.actions.current_action else number)
 
     def on_highlevel_data_updated(self):
-        for hero in self.heroes.values():
-            hero.on_highlevel_data_updated()
+        pass
 
 
     @contextlib.contextmanager
@@ -165,6 +164,9 @@ class LogicStorage(object):
         try:
             yield
         except Exception:
+            if project_settings.TESTS_RUNNING:
+                raise
+
             if logger:
                 logger.error(message % data)
                 logger.error('Exception',
@@ -189,9 +191,9 @@ class LogicStorage(object):
             return
 
         with self.on_exception(logger,
-                                    message='LogicStorage.process_turn catch exception, while processing hero %d, try to save all bundles except %d',
-                                    data=(hero.id, bundle_id),
-                                    excluded_bundle_id=bundle_id):
+                               message='LogicStorage.process_turn catch exception, while processing hero %d, try to save all bundles except %d',
+                               data=(hero.id, bundle_id),
+                               excluded_bundle_id=bundle_id):
 
             while True:
                 leader_action.process_turn()
@@ -349,7 +351,7 @@ class LogicStorage(object):
 
         test_storage = LogicStorage()
         for hero_id in self.heroes:
-            test_storage._add_hero(HeroPrototype.get_by_id(hero_id))
+            test_storage._add_hero(heroes_logic.load_hero(hero_id=hero_id))
 
         return self == test_storage
 

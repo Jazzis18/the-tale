@@ -3,21 +3,19 @@ import mock
 
 from the_tale.common.utils import testcase
 
-from the_tale.accounts.logic import register_user
-
 from the_tale.linguistics import relations as linguistics_relations
 
 from the_tale.game import names
 
 from the_tale.game.logic import create_test_map
-
-from the_tale.game.map.relations import TERRAIN
-from the_tale.game.heroes.prototypes import HeroPrototype
-
 from the_tale.game import relations as game_relations
 
+from the_tale.game.map.relations import TERRAIN
+
+from the_tale.game.heroes import logic as heroes_logic
+
 from the_tale.game.mobs.storage import mobs_storage
-from the_tale.game.mobs.relations import MOB_RECORD_STATE, MOB_TYPE
+from the_tale.game.mobs.relations import MOB_RECORD_STATE
 from the_tale.game.mobs.prototypes import MobPrototype, MobRecordPrototype
 from the_tale.game.mobs import exceptions
 
@@ -28,8 +26,8 @@ class MobsPrototypeTests(testcase.TestCase):
         super(MobsPrototypeTests, self).setUp()
         create_test_map()
 
-        result, account_id, bundle_id = register_user('test_user')
-        self.hero = HeroPrototype.get_by_account_id(account_id)
+        account = self.accounts_factory.create_account()
+        self.hero = heroes_logic.load_hero(account_id=account.id)
 
         mobs_storage.sync(force=True)
 
@@ -97,7 +95,7 @@ class MobsPrototypeTests(testcase.TestCase):
                                   description='bandint',
                                   abilities=['hit', 'thick', 'slow', 'extra_strong'],
                                   terrains=TERRAIN.records,
-                                  type=MOB_TYPE.CIVILIZED,
+                                  type=game_relations.BEING_TYPE.CIVILIZED,
                                   archetype=game_relations.ARCHETYPE.NEUTRAL,
                                   state=MOB_RECORD_STATE.ENABLED)
         mobs_storage.sync(force=True)

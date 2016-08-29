@@ -7,9 +7,9 @@ from the_tale.linguistics.tests import helpers as linguistics_helpers
 
 from the_tale.game import names
 
-from the_tale.game.map.places.models import Building
-from the_tale.game.map.places.storage import buildings_storage
-from the_tale.game.map.places.prototypes import BuildingPrototype
+from the_tale.game.places.models import Building
+from the_tale.game.places import storage as places_storage
+from the_tale.game.places.prototypes import BuildingPrototype
 
 from the_tale.game.bills.relations import BILL_STATE
 from the_tale.game.bills.prototypes import BillPrototype, VotePrototype
@@ -22,8 +22,8 @@ class BuildingCreateTests(BaseTestPrototypes):
     def setUp(self):
         super(BuildingCreateTests, self).setUp()
 
-        self.person_1 = sorted(self.place1.persons, key=lambda p: -p.power)[0]
-        self.person_2 = sorted(self.place2.persons, key=lambda p: -p.power)[-1]
+        self.person_1 = sorted(self.place1.persons, key=lambda p: -p.total_politic_power_fraction)[0]
+        self.person_2 = sorted(self.place2.persons, key=lambda p: -p.total_politic_power_fraction)[-1]
 
         self.bill_data = BuildingCreate(person_id=self.person_1.id, old_place_name_forms=self.place1.utg_name, utg_name=names.generator.get_test_name(u'building-name'))
         self.bill = BillPrototype.create(self.account1, 'bill-1-caption', 'bill-1-rationale', self.bill_data, chronicle_on_accepted='chronicle-on-accepted')
@@ -103,7 +103,7 @@ class BuildingCreateTests(BaseTestPrototypes):
 
         self.assertEqual(Building.objects.all().count(), 1)
 
-        building = buildings_storage.all()[0]
+        building = places_storage.buildings.all()[0]
 
         self.assertEqual(building.person.id, self.person_1.id)
         self.assertEqual(building.place.id, self.place1.id)
@@ -150,14 +150,13 @@ class BuildingCreateTests(BaseTestPrototypes):
 
     @mock.patch('the_tale.game.bills.conf.bills_settings.MIN_VOTES_PERCENT', 0.6)
     @mock.patch('the_tale.game.bills.prototypes.BillPrototype.time_before_voting_end', datetime.timedelta(seconds=0))
-    def test_apply_without_person(self):
+    def test_has_meaning__duplicate(self):
         self.assertEqual(Building.objects.all().count(), 0)
 
         VotePrototype.create(self.account2, self.bill, False)
         VotePrototype.create(self.account3, self.bill, True)
 
         noun = names.generator.get_test_name('building-name')
-
         data = linguistics_helpers.get_word_post_data(noun, prefix='name')
         data.update({'approved': True})
 
@@ -165,15 +164,19 @@ class BuildingCreateTests(BaseTestPrototypes):
 
         self.assertTrue(form.is_valid())
         self.bill.update_by_moderator(form)
-
-        self.person_1.move_out_game()
-
         self.assertTrue(self.bill.apply())
+
+        dup_noun = names.generator.get_test_name('dup-building-name')
+        data = linguistics_helpers.get_word_post_data(dup_noun, prefix='name')
+        data.update({'approved': True})
+
+        form = BuildingCreate.ModeratorForm(data)
 
         bill = BillPrototype.get_by_id(self.bill.id)
         bill.state = BILL_STATE.VOTING
         bill.save()
 
-        self.assertTrue(bill.apply())
+        self.assertTrue(form.is_valid())
+        bill.update_by_moderator(form)
 
-        self.assertEqual(Building.objects.all().count(), 0)
+        self.assertFalse(bill.has_meaning())

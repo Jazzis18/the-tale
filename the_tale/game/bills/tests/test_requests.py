@@ -1,4 +1,5 @@
 # coding: utf-8
+import collections
 import datetime
 
 import mock
@@ -7,7 +8,6 @@ from django.test import client
 from django.core.urlresolvers import reverse
 
 from dext.common.utils.urls import url
-from dext.common.meta_relations import logic as meta_relations_logic
 
 from the_tale.common.utils.testcase import TestCase
 from the_tale.common.utils.permissions import sync_group
@@ -23,15 +23,15 @@ from the_tale.forum.models import Post
 
 from the_tale.linguistics.tests import helpers as linguistics_helpers
 
-from the_tale.game.heroes.prototypes import HeroPrototype
+from the_tale.game.heroes import logic as heroes_logic
 
-from the_tale.game.map.places.storage import places_storage
-from the_tale.game.map.places.relations import RESOURCE_EXCHANGE_TYPE
+
+from the_tale.game.places import storage as places_storage
 
 from ..models import Bill, Vote
-from ..relations import VOTE_TYPE, BILL_STATE
+from ..relations import VOTE_TYPE, BILL_STATE, BILL_TYPE
 from ..prototypes import BillPrototype, VotePrototype
-from ..bills import PlaceRenaming, PersonRemove, PlaceResourceExchange
+from ..bills import PlaceRenaming, PersonRemove
 from ..conf import bills_settings
 from .. import meta_relations
 
@@ -305,11 +305,15 @@ class TestNewRequests(BaseTestRequests):
     def test_wrong_type(self):
         self.check_html_ok(self.request_html(reverse('game:bills:new') + '?bill_type=xxx'), texts=(('bills.new.bill_type.wrong_format', 1),))
 
+    def test_bill_not_enabled(self):
+        self.assertFalse(BILL_TYPE.PERSON_REMOVE.enabled)
+        self.check_html_ok(self.request_html(reverse('game:bills:new') + ('?bill_type=%s' % BILL_TYPE.PERSON_REMOVE.value)), texts=['bills.new.bill_type.not_enabled'])
+
     def test_success(self):
         self.check_html_ok(self.request_html(reverse('game:bills:new') + ('?bill_type=%s' % PlaceRenaming.type.value)), texts=[])
 
     def test_new_place_renaming(self):
-        texts = [('>'+place.name+'<', 1) for place in places_storage.all()]
+        texts = [('>'+place.name+'<', 1) for place in places_storage.places.all()]
         self.check_html_ok(self.request_html(reverse('game:bills:new') + ('?bill_type=%s' % PlaceRenaming.type.value)), texts=texts)
 
 
@@ -318,11 +322,11 @@ class TestShowRequests(BaseTestRequests):
     def setUp(self):
         super(TestShowRequests, self).setUp()
 
-        self.hero = HeroPrototype.get_by_account_id(self.account2.id)
+        self.hero = heroes_logic.load_hero(account_id=self.account2.id)
         self.hero.places_history.add_place(self.place1.id)
         self.hero.places_history.add_place(self.place2.id)
         self.hero.places_history.add_place(self.place3.id)
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
 
 
     def test_unlogined(self):
@@ -352,7 +356,7 @@ class TestShowRequests(BaseTestRequests):
         self.account1.save()
         self.check_html_ok(self.request_html(reverse('game:bills:show', args=[bill.id])), texts=(('pgf-can-not-participate-in-politics', 1),))
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', False)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', False)
     def test_can_not_participate_in_politics__voted(self):
         # one vote automaticaly created for bill author
         bill_data = PlaceRenaming(place_id=self.place1.id, name_forms=names.generator.get_test_name('new_name_1'))
@@ -363,10 +367,10 @@ class TestShowRequests(BaseTestRequests):
         self.account1.save()
         self.check_html_ok(self.request_html(reverse('game:bills:show', args=[bill.id])), texts=(('pgf-can-not-participate-in-politics', 0),))
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', False)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', False)
     def test_can_not_vote(self):
         self.hero.places_history._reset()
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
 
         bill_data = PlaceRenaming(place_id=self.place1.id, name_forms=names.generator.get_test_name('new_name_1'))
         self.create_bills(1, self.account2, 'Caption-a1-%d', 'rationale-a1-%d', bill_data)
@@ -374,9 +378,9 @@ class TestShowRequests(BaseTestRequests):
 
         self.check_html_ok(self.request_html(reverse('game:bills:show', args=[bill.id])), texts=(('pgf-can-not-vote-message', 1),))
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', False)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', False)
     def test_can_not_voted(self):
-        self.assertEqual(HeroPrototype.get_by_account_id(self.account1.id).places_history.history, [])
+        self.assertEqual(heroes_logic.load_hero(account_id=self.account1.id).places_history.history, collections.deque([], maxlen=200))
 
         # one vote automaticaly created for bill author
         bill_data = PlaceRenaming(place_id=self.place1.id, name_forms=names.generator.get_test_name('new_name_1'))
@@ -532,6 +536,11 @@ class TestCreateRequests(BaseTestRequests):
     def test_type_not_exist(self):
         self.check_ajax_error(self.client.post(reverse('game:bills:create') + '?bill_type=xxx', self.get_post_data()), 'bills.create.bill_type.wrong_format')
 
+    def test_type_not_enabled(self):
+        self.assertFalse(BILL_TYPE.PERSON_REMOVE.enabled)
+        self.check_ajax_error(self.client.post(reverse('game:bills:create') + ('?bill_type=%s' % BILL_TYPE.PERSON_REMOVE.value), self.get_post_data()),
+                              'bills.create.bill_type.not_enabled')
+
     def test_success(self):
         response = self.client.post(reverse('game:bills:create') + ('?bill_type=%s' % PlaceRenaming.type.value), self.get_post_data())
 
@@ -571,11 +580,12 @@ class TestVoteRequests(BaseTestRequests):
         self.account2.prolong_premium(30)
         self.account2.save()
 
-        self.hero = HeroPrototype.get_by_account_id(self.account2.id)
+        self.hero = heroes_logic.load_hero(account_id=self.account2.id)
         self.hero.places_history.add_place(self.place1.id)
         self.hero.places_history.add_place(self.place2.id)
         self.hero.places_history.add_place(self.place3.id)
-        self.hero.save()
+
+        heroes_logic.save_hero(self.hero)
 
         new_name = names.generator.get_test_name('new-name')
 
@@ -638,10 +648,10 @@ class TestVoteRequests(BaseTestRequests):
         self.check_vote(vote, self.account2, VOTE_TYPE.FOR, self.bill.id)
         self.check_bill_votes(self.bill.id, 2, 0)
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', False)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', False)
     def test_can_not_vote(self):
         self.hero.places_history._reset()
-        self.hero.save()
+        heroes_logic.save_hero(self.hero)
 
         self.check_ajax_error(self.client.post(url('game:bills:vote', self.bill.id, type=VOTE_TYPE.FOR.value), {}), 'bills.vote.can_not_vote')
         self.check_bill_votes(self.bill.id, 1, 0)
@@ -716,7 +726,7 @@ class TestEditRequests(BaseTestRequests):
 
 
     def test_edit_place_renaming(self):
-        texts = [('>'+place.name+'<', 1) for place in places_storage.all()]
+        texts = [('>'+place.name+'<', 1) for place in places_storage.places.all()]
         self.check_html_ok(self.request_html(reverse('game:bills:edit', args=[self.bill.id])), texts=texts)
 
 

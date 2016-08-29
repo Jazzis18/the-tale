@@ -3,7 +3,7 @@
 import mock
 import datetime
 
-from the_tale.game.map.places.storage import resource_exchange_storage
+from the_tale.game.places import storage as places_storage
 
 from the_tale.game.bills.prototypes import BillPrototype, VotePrototype
 from the_tale.game.bills.bills import PlaceResourceExchange, BillDecline, PlaceDescripton
@@ -104,9 +104,9 @@ class BillDeclineResourceExchangeTests(BaseTestPrototypes):
         VotePrototype.create(self.account2, self.bill, False)
         VotePrototype.create(self.account3, self.bill, True)
 
-        old_storage_version = resource_exchange_storage._version
+        old_storage_version =places_storage.resource_exchanges._version
 
-        self.assertEqual(len(resource_exchange_storage.all()), 1)
+        self.assertEqual(len(places_storage.resource_exchanges.all()), 1)
 
         form = BillDecline.ModeratorForm({'approved': True})
         self.assertTrue(form.is_valid())
@@ -114,8 +114,8 @@ class BillDeclineResourceExchangeTests(BaseTestPrototypes):
 
         self.assertTrue(self.bill.apply())
 
-        self.assertNotEqual(old_storage_version, resource_exchange_storage._version)
-        self.assertEqual(len(resource_exchange_storage.all()), 0)
+        self.assertNotEqual(old_storage_version,places_storage.resource_exchanges._version)
+        self.assertEqual(len(places_storage.resource_exchanges.all()), 0)
 
         bill = BillPrototype.get_by_id(self.bill.id)
         self.assertTrue(bill.state.is_ACCEPTED)
@@ -125,6 +125,21 @@ class BillDeclineResourceExchangeTests(BaseTestPrototypes):
         self.assertTrue(declined_bill.is_declined)
         self.assertTrue(declined_bill.declined_by.id, bill.id)
 
+    def test_has_meaning(self):
+        VotePrototype.create(self.account2, self.bill, False)
+        VotePrototype.create(self.account3, self.bill, True)
+
+        form = BillDecline.ModeratorForm({'approved': True})
+        self.assertTrue(form.is_valid())
+        self.bill.update_by_moderator(form)
+
+        self.assertTrue(self.bill.has_meaning())
+
+        self.declined_bill.is_declined = True
+        self.declined_bill.save()
+
+        self.assertFalse(self.bill.has_meaning())
+
 
     @mock.patch('the_tale.game.bills.conf.bills_settings.MIN_VOTES_PERCENT', 0.6)
     @mock.patch('the_tale.game.bills.prototypes.BillPrototype.time_before_voting_end', datetime.timedelta(seconds=0))
@@ -132,9 +147,9 @@ class BillDeclineResourceExchangeTests(BaseTestPrototypes):
         VotePrototype.create(self.account2, self.bill, False)
         VotePrototype.create(self.account3, self.bill, True)
 
-        old_storage_version = resource_exchange_storage._version
+        old_storage_version = places_storage.resource_exchanges._version
 
-        self.assertEqual(len(resource_exchange_storage.all()), 1)
+        self.assertEqual(len(places_storage.resource_exchanges.all()), 1)
 
         form = BillDecline.ModeratorForm({'approved': True})
         self.assertTrue(form.is_valid())
@@ -150,8 +165,8 @@ class BillDeclineResourceExchangeTests(BaseTestPrototypes):
 
         self.assertEqual(skipped_decline.call_count, 0)
 
-        self.assertNotEqual(old_storage_version, resource_exchange_storage._version)
-        self.assertEqual(len(resource_exchange_storage.all()), 0)
+        self.assertNotEqual(old_storage_version,places_storage.resource_exchanges._version)
+        self.assertEqual(len(places_storage.resource_exchanges.all()), 0)
 
         bill = BillPrototype.get_by_id(self.bill.id)
         self.assertTrue(bill.state.is_ACCEPTED)

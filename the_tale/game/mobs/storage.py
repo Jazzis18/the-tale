@@ -4,9 +4,10 @@ import random
 from the_tale.common.utils import storage
 from the_tale.common.utils.logic import random_value_by_priority
 
+from the_tale.game import relations as game_relations
+
 from the_tale.game.mobs import exceptions
 from the_tale.game.mobs.prototypes import MobPrototype, MobRecordPrototype
-from the_tale.game.mobs import relations
 
 
 class MobsStorage(storage.CachedStorage):
@@ -21,7 +22,7 @@ class MobsStorage(storage.CachedStorage):
 
     def _reset_cache(self):
         self._mobs_by_uuids = {}
-        self._types_count = {mob_type: 0 for mob_type in relations.MOB_TYPE.records}
+        self._types_count = {mob_type: 0 for mob_type in game_relations.BEING_TYPE.records}
         self.mobs_number = 0
 
     def get_by_uuid(self, uuid):
@@ -42,7 +43,7 @@ class MobsStorage(storage.CachedStorage):
                 if record.state.is_ENABLED and record.level <= level and (terrain is None or terrain in record.terrains))
 
         if mercenary is not None:
-            mobs = (record for record in mobs if record.type.is_mercenary == mercenary)
+            mobs = (record for record in mobs if record.is_mercenary == mercenary)
 
         return list(mobs)
 
@@ -75,7 +76,7 @@ class MobsStorage(storage.CachedStorage):
 
         mob_record = self.choose_mob(choices)
 
-        return MobPrototype(record_id=mob_record.id, level=hero.level, is_boss=is_boss)
+        return MobPrototype(record_id=mob_record.id, level=hero.level, is_boss=is_boss, action_type=hero.actions.current_action.ui_type, terrain=hero.position.get_terrain())
 
     def create_mob_for_hero(self, hero):
         return self.get_random_mob(hero)

@@ -6,16 +6,16 @@ from rels.django import DjangoEnum
 
 from utg import words as utg_words
 
-from the_tale.common.postponed_tasks import PostponedLogic, POSTPONED_TASK_LOGIC_RESULT
+from the_tale.common.postponed_tasks.prototypes import PostponedLogic, POSTPONED_TASK_LOGIC_RESULT
 
 from the_tale.accounts.prototypes import AccountPrototype
 
 from the_tale.game.relations import GENDER, RACE
 from the_tale.game.balance import constants as c
 
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.places import storage as places_storage
 from the_tale.game.mobs.storage import mobs_storage
-from the_tale.game.persons.storage import persons_storage
+from the_tale.game.persons import storage as persons_storage
 
 from the_tale.game import relations as game_relations
 
@@ -130,6 +130,8 @@ class ChangeHeroTask(PostponedLogic):
         hero.race = self.race
         hero.settings_approved = True
 
+        hero.reset_accessors_cache()
+
         storage.save_bundle_data(hero.actions.current_action.bundle_id)
 
         self.state = CHANGE_HERO_TASK_STATE.PROCESSED
@@ -139,8 +141,8 @@ class ChangeHeroTask(PostponedLogic):
 
 class RESET_HERO_ABILITIES_TASK_STATE(DjangoEnum):
    records = ( ('UNPROCESSED', 0, u'в очереди'),
-                ('PROCESSED', 1, u'обработана'),
-                ('RESET_TIMEOUT', 2, u'сброс способностей пока не доступен'))
+               ('PROCESSED', 1, u'обработана'),
+               ('RESET_TIMEOUT', 2, u'сброс способностей пока не доступен'))
 
 class ResetHeroAbilitiesTask(PostponedLogic):
 
@@ -222,20 +224,15 @@ class ChoosePreferencesTask(PostponedLogic):
 
     def process_energy_regeneration(self, main_task, hero):
 
-        try:
-            energy_regeneration_type = int(self.preference_id) if self.preference_id is not None else None
-        except:
-            main_task.comment = u'unknown energy regeneration type: %s' % (self.preference_id, )
-            self.state = CHOOSE_PREFERENCES_TASK_STATE.UNKNOWN_ENERGY_REGENERATION_TYPE
-            return POSTPONED_TASK_LOGIC_RESULT.ERROR
-
-        if energy_regeneration_type is None:
+        if self.preference_id is None:
             main_task.comment = u'energy regeneration preference can not be None'
             self.state = CHOOSE_PREFERENCES_TASK_STATE.UNSPECIFIED_PREFERENCE
             return POSTPONED_TASK_LOGIC_RESULT.ERROR
 
-        if energy_regeneration_type not in c.ANGEL_ENERGY_REGENERATION_DELAY:
-            main_task.comment = u'unknown energy regeneration type: %s' % (energy_regeneration_type, )
+        try:
+            energy_regeneration_type = relations.ENERGY_REGENERATION(int(self.preference_id))
+        except Exception:
+            main_task.comment = u'unknown energy regeneration type: %s' % (self.preference_id, )
             self.state = CHOOSE_PREFERENCES_TASK_STATE.UNKNOWN_ENERGY_REGENERATION_TYPE
             return POSTPONED_TASK_LOGIC_RESULT.ERROR
 
@@ -281,12 +278,12 @@ class ChoosePreferencesTask(PostponedLogic):
 
         if place_id is not None:
 
-            if place_id not in places_storage:
+            if place_id not in places_storage.places:
                 main_task.comment = u'unknown place id: %s' % (place_id, )
                 self.state = CHOOSE_PREFERENCES_TASK_STATE.UNKNOWN_PLACE
                 return POSTPONED_TASK_LOGIC_RESULT.ERROR
 
-        hero.preferences.set_place(places_storage.get(place_id))
+        hero.preferences.set_place(places_storage.places.get(place_id))
 
         return POSTPONED_TASK_LOGIC_RESULT.SUCCESS
 
@@ -305,17 +302,12 @@ class ChoosePreferencesTask(PostponedLogic):
                 self.state = CHOOSE_PREFERENCES_TASK_STATE.ENEMY_AND_FRIEND
                 return POSTPONED_TASK_LOGIC_RESULT.ERROR
 
-            if friend_id not in persons_storage:
+            if friend_id not in persons_storage.persons:
                 main_task.comment = u'unknown person id: %s' % (friend_id, )
                 self.state = CHOOSE_PREFERENCES_TASK_STATE.UNKNOWN_PERSON
                 return POSTPONED_TASK_LOGIC_RESULT.ERROR
 
-            if persons_storage[friend_id].out_game:
-                main_task.comment = u'person was moved out game: %s' % (friend_id, )
-                self.state = CHOOSE_PREFERENCES_TASK_STATE.OUTGAME_PERSON
-                return POSTPONED_TASK_LOGIC_RESULT.ERROR
-
-        hero.preferences.set_friend(persons_storage.get(friend_id))
+        hero.preferences.set_friend(persons_storage.persons.get(friend_id))
 
         return POSTPONED_TASK_LOGIC_RESULT.SUCCESS
 
@@ -334,17 +326,12 @@ class ChoosePreferencesTask(PostponedLogic):
                 self.state = CHOOSE_PREFERENCES_TASK_STATE.ENEMY_AND_FRIEND
                 return POSTPONED_TASK_LOGIC_RESULT.ERROR
 
-            if enemy_id not in persons_storage:
+            if enemy_id not in persons_storage.persons:
                 main_task.comment = u'unknown person id: %s' % (enemy_id, )
                 self.state = CHOOSE_PREFERENCES_TASK_STATE.UNKNOWN_PERSON
                 return POSTPONED_TASK_LOGIC_RESULT.ERROR
 
-            if persons_storage[enemy_id].out_game:
-                main_task.comment = u'person was moved out game: %s' % (enemy_id, )
-                self.state = CHOOSE_PREFERENCES_TASK_STATE.OUTGAME_PERSON
-                return POSTPONED_TASK_LOGIC_RESULT.ERROR
-
-        hero.preferences.set_enemy(persons_storage.get(enemy_id))
+        hero.preferences.set_enemy(persons_storage.persons.get(enemy_id))
 
         return POSTPONED_TASK_LOGIC_RESULT.SUCCESS
 
@@ -687,6 +674,49 @@ class CombineCardsTask(PostponedLogic):
         self.card_ui_info = card.ui_info()
 
         storage.save_bundle_data(hero.actions.current_action.bundle_id)
+
+        self.state = COMBINE_CARDS_STATE.PROCESSED
+
+        return POSTPONED_TASK_LOGIC_RESULT.SUCCESS
+
+
+class InvokeHeroMethodTask(PostponedLogic):
+
+    TYPE = 'invoke-hero-method'
+
+    class STATE(DjangoEnum):
+        records = ( ('UNPROCESSED', 0, u'в очереди'),
+                    ('PROCESSED', 1, u'обработана'),
+                    ('METHOD_NOT_FOUND', 2, u'метод не обнаружен'))
+
+    def __init__(self, hero_id, method_name, method_kwargs, state=STATE.UNPROCESSED):
+        super(InvokeHeroMethodTask, self).__init__()
+        self.hero_id = hero_id
+        self.state = state if isinstance(state, rels.Record) else self.STATE(state)
+        self.method_name = method_name
+        self.method_kwargs = method_kwargs
+
+    def serialize(self):
+        return { 'hero_id': self.hero_id,
+                 'state': self.state.value,
+                 'method_name': self.method_name,
+                 'method_kwargs': self.method_kwargs}
+
+    @property
+    def error_message(self): return self.state.text
+
+    def process(self, main_task, storage):
+
+        hero = storage.heroes[self.hero_id]
+
+        method = getattr(hero, self.method_name, None)
+
+        if method is None:
+            main_task.comment = u'can not found method: %s' % self.method_name
+            self.state = self.STATE.METHOD_NOT_FOUND
+            return POSTPONED_TASK_LOGIC_RESULT.ERROR
+
+        method(**self.method_kwargs)
 
         self.state = COMBINE_CARDS_STATE.PROCESSED
 

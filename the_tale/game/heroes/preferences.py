@@ -4,22 +4,22 @@ import datetime
 
 import rels
 
-from django.db import models
+from django.db import models as django_models
 
 from the_tale.common.utils.prototypes import BasePrototype
 
-from the_tale.game.balance import enums as e
-
 from the_tale.game.mobs.storage import mobs_storage
 
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.places import storage as places_storage
+from the_tale.game.places import objects as places_objects
 
-from the_tale.game.persons.storage import persons_storage
+from the_tale.game.persons import storage as persons_storage
+from the_tale.game.persons import objects as persons_objects
 
 from the_tale.game import relations as game_relations
 
-from the_tale.game.heroes import relations
-from the_tale.game.heroes.prototypes import HeroPrototype, HeroPreferencesPrototype
+from . import relations
+from . import models
 
 
 class _PreferencesMetaclass(type):
@@ -85,17 +85,17 @@ class HeroPreferences(object):
     __metaclass__ = _PreferencesMetaclass
     __slots__ = ('data', 'updated', 'hero')
 
-    def __init__(self, hero):
+    def __init__(self):
         self.data = {}
         self.updated = False
-        self.hero = hero
+        self.hero = None
 
     def serialize(self):
         return self.data
 
     @classmethod
-    def deserialize(cls, hero, data):
-        obj = cls(hero=hero)
+    def deserialize(cls, data):
+        obj = cls()
         obj.data = data
         return obj
 
@@ -122,6 +122,10 @@ class HeroPreferences(object):
     def value_to_set(self, value):
         if isinstance(value, BasePrototype):
             return value.id if value is not None else None
+        if isinstance(value, places_objects.Place):
+            return value.id if value is not None else None
+        if isinstance(value, persons_objects.Person):
+            return value.id if value is not None else None
         if isinstance(value, rels.Record):
             return value.value if value is not None else None
         return value
@@ -136,7 +140,9 @@ class HeroPreferences(object):
 
         self.data[preferences_type.base_name] = {'value': value,
                                                  'changed_at': time.mktime(change_time.timetuple())}
-        HeroPreferencesPrototype.update(self.hero.id, preferences_type.base_name, value)
+        models.HeroPreferences.update(self.hero.id, preferences_type.base_name, value)
+
+        self.hero.reset_accessors_cache()
 
     def _reset(self, preferences_type):
         self._set(preferences_type, None, change_time=datetime.datetime.fromtimestamp(0))
@@ -158,9 +164,12 @@ class HeroPreferences(object):
 
         return mob
 
-    def _prepair_place(self, place_id): return places_storage.get(place_id)
+    def _prepair_place(self, place_id): return places_storage.places.get(place_id)
 
-    def _prepair_person(self, person_id): return persons_storage.get(person_id)
+    def _prepair_person(self, person_id): return persons_storage.persons.get(person_id)
+
+    def _prepair_energy_regeneration(self, energy_regeneration_id):
+        return relations.ENERGY_REGENERATION.index_value.get(int(energy_regeneration_id))
 
     def _prepair_equipment_slot(self, slot_id):
         if slot_id is None: return None
@@ -195,68 +204,61 @@ class HeroPreferences(object):
             return default
         return datetime.datetime.fromtimestamp(self.data[preferences_type.base_name]['changed_at'])
 
-    @property
-    def energy_regeneration_type_name(self):
-        return e.ANGEL_ENERGY_REGENERATION_TYPES._ID_TO_TEXT[self.energy_regeneration_type]
-
-
     # helpers
+
+    def has_place_in_preferences(self, place):
+        return self.place is not None and self.place.id == place.id
+
+    def has_person_in_preferences(self, person):
+        return ( (self.friend is not None and self.friend.id == person.id) or
+                 (self.enemy is not None and self.enemy.id == person.id) )
 
     @classmethod
     def _preferences_query(cls, all):
         current_time = datetime.datetime.now()
 
-        filter = models.Q(hero__premium_state_end_at__gte=current_time)
+        filter = django_models.Q(hero__premium_state_end_at__gte=current_time)
 
         if all:
-            filter |= models.Q(hero__active_state_end_at__gte=current_time)
+            filter |= django_models.Q(hero__active_state_end_at__gte=current_time)
 
-        return HeroPreferencesPrototype._model_class.objects.filter(filter, hero__is_fast=False, hero__ban_state_end_at__lt=current_time)
+        return models.HeroPreferences.objects.filter(filter, hero__is_fast=False, hero__ban_state_end_at__lt=current_time)
 
     @classmethod
     def _heroes_query(cls, all):
         current_time = datetime.datetime.now()
 
-        filter = models.Q(premium_state_end_at__gte=current_time)
+        filter = django_models.Q(premium_state_end_at__gte=current_time)
 
         if all:
-            filter |= models.Q(active_state_end_at__gte=current_time)
+            filter |= django_models.Q(active_state_end_at__gte=current_time)
 
-        return HeroPrototype._model_class.objects.filter(filter, is_fast=False, ban_state_end_at__lt=current_time)
+        return models.Hero.objects.filter(filter, is_fast=False, ban_state_end_at__lt=current_time)
 
     @classmethod
     def _place_heroes_query(cls, place, all):
         persons_ids = [person.id for person in place.persons]
 
-        db_filter = models.Q(place_id=place.id)
-        db_filter |= models.Q(friend_id__in=persons_ids)
-        db_filter |= models.Q(enemy_id__in=persons_ids)
+        db_filter = django_models.Q(place_id=place.id)
+        db_filter |= django_models.Q(friend_id__in=persons_ids)
+        db_filter |= django_models.Q(enemy_id__in=persons_ids)
 
         return cls._preferences_query(all=all).filter(db_filter)
 
     @classmethod
-    def count_friends_of(cls, person, all):
-        return cls._preferences_query(all=all).filter(friend_id=person.id).count()
-
-    @classmethod
-    def count_enemies_of(cls, person, all):
-        return cls._preferences_query(all=all).filter(enemy_id=person.id).count()
-
-    @classmethod
-    def count_citizens_of(cls, place, all):
-        return cls._preferences_query(all=all).filter(place_id=place.id).count()
-
-    @classmethod
     def get_friends_of(cls, person, all):
-        return [HeroPrototype(model=record) for record in cls._heroes_query(all=all).filter(heropreferences__friend_id=person.id)]
+        from . import logic
+        return [logic.load_hero(hero_model=record) for record in cls._heroes_query(all=all).filter(heropreferences__friend_id=person.id)]
 
     @classmethod
     def get_enemies_of(cls, person, all):
-        return [HeroPrototype(model=record) for record in cls._heroes_query(all=all).filter(heropreferences__enemy_id=person.id)]
+        from . import logic
+        return [logic.load_hero(hero_model=record) for record in cls._heroes_query(all=all).filter(heropreferences__enemy_id=person.id)]
 
     @classmethod
     def get_citizens_of(cls, place, all):
-        return [HeroPrototype(model=record) for record in cls._heroes_query(all=all).filter(heropreferences__place_id=place.id)]
+        from . import logic
+        return [logic.load_hero(hero_model=record) for record in cls._heroes_query(all=all).filter(heropreferences__place_id=place.id)]
 
     @classmethod
     def count_habit_values(cls, place, all):

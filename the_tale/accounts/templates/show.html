@@ -183,7 +183,7 @@ jQuery(document).ready(function(){
                     {% for record in account_info.places_history %}
                       <tr>
                         <td>{{loop.index}}</td>
-                        <td><a href="{{url('game:map:places:show', record.place.id)}}">{{record.place.name}}</a></td>
+                        <td><a href="{{url('game:places:show', record.place.id)}}">{{record.place.name}}</a></td>
                         <td>{{record.count}}</td>
                       </tr>
                     {% endfor %}
@@ -208,7 +208,7 @@ jQuery(document).ready(function(){
         <h3>Произведения о Хранителе</h3>
 
         <p>
-          Чтобы произведение появилось в списке, его автор должен указать что оно об этом Хранителе, а Хранитель должен поставить произведению «плюсик».
+          Чтобы произведение появилось в списке, его автор должен указать, что оно об этом Хранителе, а Хранитель должен поставить произведению «плюсик».
         </p>
 
         {% if folclor_objects %}
@@ -276,6 +276,10 @@ jQuery(document).ready(function(){
 
           <p>
             Обсудить работу информера можно на нашем <a href="{{url('forum:threads:show', accounts_settings.INFORMER_FORUM_THREAD)}}">форуме</a>.
+          </p>
+
+          <p>
+            Также игроком <a target="_blank" href="{{url('accounts:show', accounts_settings.INFORMER_2_CREATOR_ID)}}">{{accounts_settings.INFORMER_2_CREATOR_NAME}}</a> был разработан альтернативный  информер, который можно найти на <a href="{{url('forum:threads:show', accounts_settings.INFORMER_2_FORUM_THREAD)}}">форуме</a>.
           </p>
 
         {% endif %}

@@ -4,7 +4,7 @@ from dext.common.utils import urls
 
 from the_tale.common.utils import meta_relations
 
-from . import prototypes
+from the_tale.game.heroes import logic as heroes_logic
 
 
 class Hero(meta_relations.MetaType):
@@ -26,7 +26,7 @@ class Hero(meta_relations.MetaType):
 
     @classmethod
     def create_from_id(cls, id):
-        hero = prototypes.HeroPrototype.get_by_id(id)
+        hero = heroes_logic.load_hero(hero_id=id)
         if hero is None:
             return None
 

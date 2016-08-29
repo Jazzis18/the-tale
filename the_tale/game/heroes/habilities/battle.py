@@ -18,22 +18,22 @@ class HIT(AbilityPrototype):
 
     NAME = u'Удар'
     normalized_name = NAME
-    DESCRIPTION = u'Каждый уважающий себя герой должен быть в состоянии ударить противника… или пнуть.'
+    DESCRIPTION = u'Каждый уважающий себя боец должен быть в состоянии ударить противника, пнуть или поставить магическую подножку.'
 
     DAMAGE_MODIFIER = [1.00]
 
     @property
     def damage_modifier(self): return self.DAMAGE_MODIFIER[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         damage = actor.basic_damage*self.damage_modifier
         damage = actor.context.modify_outcoming_damage(damage)
         damage = enemy.context.modify_incoming_damage(damage)
         enemy.change_health(-damage.total)
-        messanger.add_message('hero_ability_hit', attacker=actor, defender=enemy, damage=damage.total)
+        messenger.add_message('hero_ability_hit', attacker=actor, defender=enemy, damage=damage.total)
 
-    def on_miss(self, messanger, actor, enemy):
-        messanger.add_message('hero_ability_hit_miss', attacker=actor, defender=enemy)
+    def on_miss(self, messenger, actor, enemy):
+        messenger.add_message('hero_ability_hit_miss', attacker=actor, defender=enemy)
 
 
 class STRONG_HIT(AbilityPrototype):
@@ -45,24 +45,59 @@ class STRONG_HIT(AbilityPrototype):
 
     PRIORITY = [15, 16, 17, 18, 19]
 
-    NAME = u'Тяжёлый удар'
+    NAME = u'Сильный удар'
     normalized_name = NAME
-    DESCRIPTION = u'Если хорошенько размахнуться и правильно ударить, то удар получится намного сильнее и болезненней.'
+    DESCRIPTION = u'Боец наносит очень сильный и болезненный удар по противнику.'
 
     DAMAGE_MODIFIER = [1.25, 1.4, 1.55, 1.7, 1.85]
 
     @property
     def damage_modifier(self): return self.DAMAGE_MODIFIER[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         damage = actor.basic_damage * self.damage_modifier
         damage = actor.context.modify_outcoming_damage(damage)
         damage = enemy.context.modify_incoming_damage(damage)
         enemy.change_health(-damage.total)
-        messanger.add_message('hero_ability_strong_hit', attacker=actor, defender=enemy, damage=damage.total)
+        messenger.add_message('hero_ability_strong_hit', attacker=actor, defender=enemy, damage=damage.total)
 
-    def on_miss(self, messanger, actor, enemy):
-        messanger.add_message('hero_ability_strong_hit_miss', attacker=actor, defender=enemy)
+    def on_miss(self, messenger, actor, enemy):
+        messenger.add_message('hero_ability_strong_hit_miss', attacker=actor, defender=enemy)
+
+
+class INSANE_STRIKE(AbilityPrototype):
+
+    TYPE = relations.ABILITY_TYPE.BATTLE
+    ACTIVATION_TYPE = relations.ABILITY_ACTIVATION_TYPE.ACTIVE
+    LOGIC_TYPE = relations.ABILITY_LOGIC_TYPE.WITH_CONTACT
+    HAS_DAMAGE = True
+
+    PRIORITY = [8, 9, 10, 11, 12]
+
+    NAME = u'Безрассудная атака'
+    normalized_name = NAME
+    DESCRIPTION = u'Боец, не ведая страха, бросается в атаку и наносит противнику огромный урон, но и сам получает существенные ранения.'
+
+    DEFENDER_DAMAGE_MODIFIER = [1.5, 2.0, 2.5, 3, 3.5]
+    ATTACKER_DAMAGE_MODIFIER = 0.33
+
+    @property
+    def defender_damage_modifier(self): return self.DEFENDER_DAMAGE_MODIFIER[self.level-1]
+
+    def use(self, messenger, actor, enemy):
+        damage = actor.basic_damage * self.defender_damage_modifier
+        damage = actor.context.modify_outcoming_damage(damage)
+        damage = enemy.context.modify_incoming_damage(damage)
+
+        attacker_damage = damage * self.ATTACKER_DAMAGE_MODIFIER
+
+        enemy.change_health(-damage.total)
+        actor.change_health(-attacker_damage.total)
+
+        messenger.add_message('hero_ability_insane_strike', attacker=actor, defender=enemy, damage=damage.total, attacker_damage=attacker_damage.total)
+
+    def on_miss(self, messenger, actor, enemy):
+        messenger.add_message('hero_ability_insane_strike_miss', attacker=actor, defender=enemy)
 
 
 class MAGIC_MUSHROOM(AbilityPrototype):
@@ -72,9 +107,9 @@ class MAGIC_MUSHROOM(AbilityPrototype):
     LOGIC_TYPE = relations.ABILITY_LOGIC_TYPE.WITHOUT_CONTACT
     PRIORITY = [9, 11, 11, 12, 12]
 
-    NAME = u'Волшебный гриб'
+    NAME = u'Ярость'
     normalized_name = NAME
-    DESCRIPTION = u'Герой всегда носит с собой особые грибы, съев один из которых в бою, на некоторое время существенно увеличивает наносимый урон.'
+    DESCRIPTION = u'Боец на небольшое время впадает в ярость, существенно увеличивая наносимый урон.'
 
     DAMAGE_FACTORS = [ [1.75, 1.55, 1.25, 1.05],
                        [1.85, 1.65, 1.40, 1.15],
@@ -85,9 +120,9 @@ class MAGIC_MUSHROOM(AbilityPrototype):
     @property
     def damage_factors(self): return self.DAMAGE_FACTORS[self.level-1]
 
-    def use(self, messanger, actor, enemy): # pylint: disable=W0613
+    def use(self, messenger, actor, enemy): # pylint: disable=W0613
         actor.context.use_ability_magic_mushroom(self.damage_factors)
-        messanger.add_message('hero_ability_magicmushroom', actor=actor)
+        messenger.add_message('hero_ability_magicmushroom', actor=actor)
 
 
 class SIDESTEP(AbilityPrototype):
@@ -97,9 +132,9 @@ class SIDESTEP(AbilityPrototype):
     LOGIC_TYPE = relations.ABILITY_LOGIC_TYPE.WITHOUT_CONTACT
     PRIORITY = [12, 13, 14, 15, 16]
 
-    NAME = u'Шаг в сторону'
+    NAME = u'Дезориентация'
     normalized_name = NAME
-    DESCRIPTION = u'Герой быстро меняет свою позицию, дезориентируя противника, из-за чего тот начинает промахиваться.'
+    DESCRIPTION = u'Боец дезориентирует противника, из-за чего тот начинает промахиваться.'
 
     MISS_PROBABILITIES = [ [1.00, 0.35, 0.175],
                            [1.00, 0.45, 0.200, 0.05],
@@ -110,12 +145,12 @@ class SIDESTEP(AbilityPrototype):
     @property
     def miss_probabilities(self): return self.MISS_PROBABILITIES[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         enemy.context.use_ability_sidestep(self.miss_probabilities)
-        messanger.add_message('hero_ability_sidestep', attacker=actor, defender=enemy)
+        messenger.add_message('hero_ability_sidestep', attacker=actor, defender=enemy)
 
-    def on_miss(self, messanger, actor, enemy):
-        messanger.add_message('hero_ability__miss', attacker=actor, defender=enemy)
+    def on_miss(self, messenger, actor, enemy):
+        messenger.add_message('hero_ability__miss', attacker=actor, defender=enemy)
 
 
 class RUN_UP_PUSH(AbilityPrototype):
@@ -126,9 +161,9 @@ class RUN_UP_PUSH(AbilityPrototype):
     PRIORITY = [7, 8, 9, 10, 11]
     HAS_DAMAGE = True
 
-    NAME = u'Разбег-толчок'
+    NAME = u'Ошеломление'
     normalized_name = NAME
-    DESCRIPTION = u'Герой разбегается и наносит урон противнику. Враг будет оглушён и пропустит один или несколько ходов атаки.'
+    DESCRIPTION = u'Боец оглушает противника и тот пропускает один или несколько ходов.'
 
     DAMAGE_MODIFIER = [0.35, 0.45, 0.55, 0.65, 0.75]
 
@@ -144,16 +179,16 @@ class RUN_UP_PUSH(AbilityPrototype):
     @property
     def damage_modifier(self): return self.DAMAGE_MODIFIER[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         damage = actor.basic_damage * self.damage_modifier
         damage = actor.context.modify_outcoming_damage(damage)
         damage = enemy.context.modify_incoming_damage(damage)
         enemy.change_health(-damage.total)
         enemy.context.use_stun(int(round(random.uniform(*self.stun_length))))
-        messanger.add_message('hero_ability_runuppush', attacker=actor, defender=enemy, damage=damage.total)
+        messenger.add_message('hero_ability_runuppush', attacker=actor, defender=enemy, damage=damage.total)
 
-    def on_miss(self, messanger, actor, enemy):
-        messanger.add_message('hero_ability_runuppush_miss', attacker=actor, defender=enemy)
+    def on_miss(self, messenger, actor, enemy):
+        messenger.add_message('hero_ability_runuppush_miss', attacker=actor, defender=enemy)
 
 
 
@@ -166,7 +201,7 @@ class REGENERATION(AbilityPrototype):
 
     NAME = u'Регенерация'
     normalized_name = NAME
-    DESCRIPTION = u'Во время боя герой может восстановить часть своего здоровья.'
+    DESCRIPTION = u'Во время боя боец может восстановить часть своего здоровья.'
 
     RESTORED_PERCENT = [0.17, 0.20, 0.23, 0.25, 0.28]
 
@@ -175,10 +210,10 @@ class REGENERATION(AbilityPrototype):
 
     def can_be_used(self, actor): return actor.health < actor.max_health
 
-    def use(self, messanger, actor, enemy): # pylint: disable=W0613
+    def use(self, messenger, actor, enemy): # pylint: disable=W0613
         health_to_regen = f.mob_hp_to_lvl(actor.level) * self.restored_percent * (1 + random.uniform(-c.DAMAGE_DELTA, c.DAMAGE_DELTA))# !!!MOB HP, NOT HERO!!!
         applied_health = int(round(actor.change_health(health_to_regen)))
-        messanger.add_message('hero_ability_regeneration', actor=actor, health=applied_health)
+        messenger.add_message('hero_ability_regeneration', actor=actor, health=applied_health)
 
 
 class CRITICAL_HIT(AbilityPrototype):
@@ -188,7 +223,7 @@ class CRITICAL_HIT(AbilityPrototype):
 
     NAME = u'Критический удар'
     normalized_name = NAME
-    DESCRIPTION = u'Удача благосклонна к герою — урон от любого удара может существенно увеличиться.'
+    DESCRIPTION = u'Удача благосклонна к бойцу — урон от любого удара может существенно увеличиться.'
 
     CRITICAL_CHANCE = [0.03, 0.06, 0.09, 0.10, 0.13]
 
@@ -206,7 +241,7 @@ class BERSERK(AbilityPrototype):
 
     NAME = u'Берсерк'
     normalized_name = NAME
-    DESCRIPTION = u'Чем меньше у героя остаётся здоровья, тем больше урона врагу он наносит.'
+    DESCRIPTION = u'Чем меньше у бойца остаётся здоровья, тем больше урона врагу он наносит.'
 
     MAXIMUM_BONUS = [0.05, 0.10, 0.15, 0.20, 0.25]
 
@@ -243,9 +278,9 @@ class FIREBALL(AbilityPrototype):
     PRIORITY = [4, 5, 6, 7, 8]
     HAS_DAMAGE = True
 
-    NAME = u'Шар огня'
+    NAME = u'Пиромания'
     normalized_name = NAME
-    DESCRIPTION = u'Герой запускает в противника шар огня, нанося большой урон и поджигая врага.'
+    DESCRIPTION = u'Боец устраивает огненный взрыв, который наносит большой урон противнику и поджигает его.'
 
     DAMAGE_MODIFIER = [1.45, 1.50, 1.55, 1.60, 1.65]
     PERIODIC_DAMAGE_MODIFIERS = [ [0.18, 0.08],
@@ -260,16 +295,16 @@ class FIREBALL(AbilityPrototype):
     @property
     def periodic_damage_modifiers(self): return self.PERIODIC_DAMAGE_MODIFIERS[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         damage = actor.basic_damage * self.damage_modifier
         outcoming_damage = actor.context.modify_outcoming_damage(damage)
         damage = enemy.context.modify_incoming_damage(outcoming_damage)
         enemy.change_health(-damage.total)
         enemy.context.use_damage_queue_fire([outcoming_damage * modifier for modifier in self.periodic_damage_modifiers])
-        messanger.add_message('hero_ability_fireball', attacker=actor, defender=enemy, damage=damage.total)
+        messenger.add_message('hero_ability_fireball', attacker=actor, defender=enemy, damage=damage.total)
 
-    def on_miss(self, messanger, actor, enemy):
-        messanger.add_message('hero_ability_fireball_miss', attacker=actor, defender=enemy)
+    def on_miss(self, messenger, actor, enemy):
+        messenger.add_message('hero_ability_fireball_miss', attacker=actor, defender=enemy)
 
 
 class POISON_CLOUD(AbilityPrototype):
@@ -280,9 +315,9 @@ class POISON_CLOUD(AbilityPrototype):
     PRIORITY = [6, 7, 8, 9, 10]
     HAS_DAMAGE = True
 
-    NAME = u'Ядовитое облако'
+    NAME = u'Ядовитость'
     normalized_name = NAME
-    DESCRIPTION = u'Вокруг противника сгущается ядовитое облако, вызывающее сильное отравление, из-за которого враг начинает постепенно терять здоровье.'
+    DESCRIPTION = u'Боец отравляет противника и тот начинает постепенно терять здоровье.'
 
     PERIODIC_DAMAGE_MODIFIERS = [ [0.75, 0.50, 0.25],
                                   [0.90, 0.65, 0.40],
@@ -293,11 +328,11 @@ class POISON_CLOUD(AbilityPrototype):
     @property
     def periodic_damage_modifiers(self): return self.PERIODIC_DAMAGE_MODIFIERS[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         damage = actor.basic_damage
         damage = actor.context.modify_outcoming_damage(damage)
         enemy.context.use_damage_queue_poison([damage * modifier for modifier in self.periodic_damage_modifiers])
-        messanger.add_message('hero_ability_poison_cloud', attacker=actor, defender=enemy)
+        messenger.add_message('hero_ability_poison_cloud', attacker=actor, defender=enemy)
 
 
 class VAMPIRE_STRIKE(AbilityPrototype):
@@ -308,9 +343,9 @@ class VAMPIRE_STRIKE(AbilityPrototype):
     PRIORITY = [14, 15, 16, 17, 18]
     HAS_DAMAGE = True
 
-    NAME = u'Удар вампира'
+    NAME = u'Вампиризм'
     normalized_name = NAME
-    DESCRIPTION = u'Секретный удар, лечащий героя на величину, пропорциональную нанесённому урону.'
+    DESCRIPTION = u'Боец использует одну из секретных техник, чтобы нанести урон противнику и одновременно восстановить часть своего здоровья.'
 
     DAMAGE_FRACTION = [0.85, 0.95, 1.00, 1.10, 1.15]
     HEAL_FRACTION =   [0.45, 0.55, 0.65, 0.70, 0.75]
@@ -321,17 +356,17 @@ class VAMPIRE_STRIKE(AbilityPrototype):
     @property
     def damage_fraction(self): return self.DAMAGE_FRACTION[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         damage = actor.basic_damage * self.damage_fraction
         damage = actor.context.modify_outcoming_damage(damage)
         damage = enemy.context.modify_incoming_damage(damage)
         health = int(round(damage.total * self.heal_fraction))
         enemy.change_health(-damage.total)
         actor.change_health(health)
-        messanger.add_message('hero_ability_vampire_strike', attacker=actor, defender=enemy, damage=damage.total, health=health)
+        messenger.add_message('hero_ability_vampire_strike', attacker=actor, defender=enemy, damage=damage.total, health=health)
 
-    def on_miss(self, messanger, actor, enemy):
-        messanger.add_message('hero_ability_vampire_strike_miss', attacker=actor, defender=enemy)
+    def on_miss(self, messenger, actor, enemy):
+        messenger.add_message('hero_ability_vampire_strike_miss', attacker=actor, defender=enemy)
 
 
 class FREEZING(AbilityPrototype):
@@ -341,9 +376,9 @@ class FREEZING(AbilityPrototype):
     LOGIC_TYPE = relations.ABILITY_LOGIC_TYPE.WITHOUT_CONTACT
     PRIORITY = [7, 8, 10, 10, 11]
 
-    NAME = u'Заморозка'
+    NAME = u'Контроль'
     normalized_name = NAME
-    DESCRIPTION = u'Противника пронзает ужасный холод, замедляя его движения.'
+    DESCRIPTION = u'Своими действиями боец замедляет движения противника.'
 
     INITIATIVE_MODIFIERS = [ [0.37, 0.48, 0.58, 0.68, 0.78, 0.88],
                              [0.33, 0.44, 0.54, 0.64, 0.74, 0.84, 0.94],
@@ -354,9 +389,9 @@ class FREEZING(AbilityPrototype):
     @property
     def initiative_modifiers(self): return self.INITIATIVE_MODIFIERS[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         enemy.context.use_initiative(self.initiative_modifiers)
-        messanger.add_message('hero_ability_freezing', attacker=actor, defender=enemy)
+        messenger.add_message('hero_ability_freezing', attacker=actor, defender=enemy)
 
 
 class SPEEDUP(AbilityPrototype):
@@ -368,7 +403,7 @@ class SPEEDUP(AbilityPrototype):
 
     NAME = u'Ускорение'
     normalized_name = NAME
-    DESCRIPTION = u'Воин накачивает себя магической энергией, временно улучшая свои рефлексы.'
+    DESCRIPTION = u'Боец временно улучшает свои рефлексы.'
 
     INITIATIVE_MODIFIERS = [ [2.90, 2.40, 1.80, 1.40],
                              [3.15, 2.55, 2.00, 1.55, 1.05],
@@ -379,9 +414,9 @@ class SPEEDUP(AbilityPrototype):
     @property
     def initiative_modifiers(self): return self.INITIATIVE_MODIFIERS[self.level-1]
 
-    def use(self, messanger, actor, enemy):
+    def use(self, messenger, actor, enemy):
         actor.context.use_initiative(self.initiative_modifiers)
-        messanger.add_message('hero_ability_speedup', attacker=actor, defender=enemy)
+        messenger.add_message('hero_ability_speedup', attacker=actor, defender=enemy)
 
 
 class LAST_CHANCE(AbilityPrototype):

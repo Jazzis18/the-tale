@@ -2,7 +2,7 @@
 
 from the_tale.common.utils import testcase
 
-from the_tale.game.balance import constants as c, enums as e
+from the_tale.game.balance import constants as c
 
 E = 0.00001
 
@@ -22,9 +22,12 @@ class ConstantsTest(testcase.TestCase):
         self.assertEqual(c.POWER_PER_LVL, 1)
         self.assertEqual(c.EQUIP_SLOTS_NUMBER, 11)
 
-        self.assertEqual(c.ARTIFACTS_LOOT_PER_DAY, 1.0)
-        self.assertEqual(c.ARTIFACT_FOR_QUEST_PROBABILITY, 0.1)
-        self.assertEqual(round(c.ARTIFACTS_BREAKING_SPEED, 2), 0.37)
+        self.assertEqual(c.ARTIFACTS_LOOT_PER_DAY, 2.0)
+        self.assertEqual(c.ARTIFACT_FOR_QUEST_PROBABILITY, 0.2)
+        self.assertEqual(round(c.ARTIFACTS_BREAKING_SPEED, 2), 0.52)
+
+        self.assertEqual(c.INCOME_LOOT_FRACTION, 0.6)
+        self.assertEqual(c.INCOME_ARTIFACTS_FRACTION, 0.4)
 
         self.assertEqual(c.EQUIPMENT_BREAK_FRACTION, 0.5)
         self.assertEqual(c.NORMAL_SLOT_REPAIR_PRIORITY, 1.0)
@@ -56,7 +59,6 @@ class ConstantsTest(testcase.TestCase):
         self.assertEqual(c.BASE_EXPERIENCE_FOR_MONEY_SPEND, 96)
         self.assertEqual(c.EXPERIENCE_DELTA_FOR_MONEY_SPEND, 0.5)
 
-        self.assertEqual(c.SELL_ARTIFACT_PRICE_MULTIPLIER, 10)
         self.assertEqual(c.POWER_TO_LVL, 11.0)
         self.assertEqual(c.ARTIFACT_POWER_DELTA, 0.2)
         self.assertEqual(c.ARTIFACT_BETTER_MIN_POWER_DELTA, 5)
@@ -82,8 +84,8 @@ class ConstantsTest(testcase.TestCase):
 
         self.assertEqual(c.BATTLES_PER_HOUR, 15.319148936170212)
 
-        self.assertEqual(c.ARTIFACTS_PER_BATTLE, 0.0027199074074074074)
-        self.assertEqual(c.ARTIFACTS_BREAKS_PER_BATTLE, 0.0009972993827160493)
+        self.assertEqual(c.ARTIFACTS_PER_BATTLE, 0.005439814814814815)
+        self.assertEqual(c.ARTIFACTS_BREAKS_PER_BATTLE, 0.0014247134038800706)
         self.assertEqual(c.ARTIFACT_FROM_PREFERED_SLOT_PROBABILITY, 0.25)
 
         self.assertEqual(c.DAMAGE_TO_HERO_PER_HIT_FRACTION, 0.019230769230769232)
@@ -105,18 +107,8 @@ class ConstantsTest(testcase.TestCase):
         self.assertEqual(c.ANGEL_ENERGY_REGENERATION_TIME,  0.5)
         self.assertEqual(c.ANGEL_ENERGY_REGENERATION_PERIOD,  180)
         self.assertEqual(c.ANGEL_ENERGY_REGENERATION_AMAUNT, 1)
-
-        self.assertEqual(c.ANGEL_ENERGY_REGENERATION_DELAY, { e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY: 1,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE: 2,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.INCENSE: 4,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.SYMBOLS: 3,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.MEDITATION: 2 })
-
-        self.assertEqual(c.ANGEL_ENERGY_REGENERATION_STEPS, { e.ANGEL_ENERGY_REGENERATION_TYPES.PRAY: 3,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.SACRIFICE: 5,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.INCENSE: 6,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.SYMBOLS: 4,
-                                                              e.ANGEL_ENERGY_REGENERATION_TYPES.MEDITATION: 4 })
+        self.assertEqual(c.ANGEL_ENERGY_REGENERATION_LENGTH, 3)
+        self.assertEqual(c.ANGEL_ENERGY_IN_DAY, 48)
 
         self.assertEqual(c.ANGEL_HELP_COST, 4)
         self.assertEqual(c.ANGEL_ARENA_COST, 1)
@@ -173,7 +165,10 @@ class ConstantsTest(testcase.TestCase):
         self.assertEqual(c.HERO_POWER_PER_DAY, 100)
         self.assertEqual(c.PERSON_POWER_PER_QUEST_FRACTION, 0.33)
         self.assertEqual(c.PERSON_POWER_FOR_RANDOM_SPEND, 200)
-        self.assertEqual(c.HERO_POWER_BONUS, 0.01)
+
+        self.assertEqual(c.MINIMUM_CARD_POWER, 20)
+
+        self.assertEqual(c.NORMAL_JOB_LENGTH, 10)
 
         self.assertEqual(c.PREFERENCES_CHANGE_DELAY, 2*7*24*60*60)
         self.assertEqual(c.PREFERED_MOB_LOOT_PROBABILITY_MULTIPLIER, 2)
@@ -201,12 +196,12 @@ class ConstantsTest(testcase.TestCase):
         self.assertEqual(round(c.PICKED_UP_IN_ROAD_SPEED_BONUS, 5), 0.07018)
         self.assertEqual(round(c.PICKED_UP_IN_ROAD_PROBABILITY, 5), 0.02339)
 
-        self.assertEqual(c.HABIT_QUEST_PRIORITY_MODIFIER, 2.0)
+        self.assertEqual(c.HABIT_QUEST_PRIORITY_MODIFIER, 1)
 
         self.assertEqual(c.HONOR_POWER_BONUS_FRACTION, 1.5)
         self.assertEqual(c.MONSTER_TYPE_BATTLE_CRIT_MAX_CHANCE, 0.02)
 
-        self.assertEqual(c.HABIT_QUEST_REWARD_MAX_BONUS, 0.25)
+        self.assertEqual(c.HABIT_QUEST_REWARD_MAX_BONUS, 1.0)
         self.assertEqual(c.HABIT_LOOT_PROBABILITY_MODIFIER, 1.2)
 
         self.assertEqual(c.EXP_FOR_KILL, 20)
@@ -238,6 +233,25 @@ class ConstantsTest(testcase.TestCase):
         self.assertEqual(c.PVP_EFFECTIVENESS_STEP, 10)
         self.assertEqual(c.PVP_EFFECTIVENESS_INITIAL, 300)
 
+        self.assertEqual(c.PLACE_MIN_PERSONS, 2)
+        self.assertEqual(c.PLACE_MAX_PERSONS, 6)
+
+        self.assertEqual(c.PLACE_MIN_SAFETY, 0.05)
+        self.assertEqual(c.PLACE_MIN_TRANSPORT, 0.1)
+        self.assertEqual(c.PLACE_MIN_STABILITY, 0)
+
+        self.assertEqual(c.PLACE_MAX_SIZE, 10)
+        self.assertEqual(c.PLACE_MAX_ECONOMIC, 10)
+        self.assertEqual(c.PLACE_MAX_FRONTIER_ECONOMIC, 5)
+
+        self.assertEqual(c.PLACE_NEW_PLACE_LIVETIME, 2*7*24*60*60)
+
+        self.assertEqual(c.PLACE_POWER_HISTORY_WEEKS, 6)
+        self.assertEqual(c.PLACE_POWER_HISTORY_LENGTH, 362880)
+
+        self.assertEqual(c.PLACE_POWER_RECALCULATE_STEPS, 1008)
+        self.assertEqual(c.PLACE_POWER_REDUCE_FRACTION, 0.9954417990588478)
+
         self.assertEqual(c.PLACE_TYPE_NECESSARY_BORDER, 75)
         self.assertEqual(c.PLACE_TYPE_ENOUGH_BORDER, 50)
 
@@ -255,7 +269,8 @@ class ConstantsTest(testcase.TestCase):
 
         self.assertEqual(c.PLACE_RACE_CHANGE_DELTA_IN_DAY, 0.1)
         self.assertEqual(c.PLACE_RACE_CHANGE_DELTA, 0.1 / 24)
-        self.assertEqual(c.PLACE_ADD_PERSON_DELAY, 8640)
+
+        self.assertEqual(c.PLACE_STABILITY_UNIT, 0.1)
 
         self.assertEqual(round(c.PLACE_STABILITY_RECOVER_SPEED, 4), 0.0006)
 
@@ -271,13 +286,24 @@ class ConstantsTest(testcase.TestCase):
         self.assertEqual(c.PLACE_HABITS_CHANGE_SPEED_MAXIMUM_PENALTY, 10)
         self.assertEqual(c.PLACE_HABITS_EVENT_PROBABILITY, 0.025)
 
+        self.assertEqual(c.PLACE_JOB_EFFECT_FRACTION, 0.2)
+
+        self.assertEqual(c.JOB_PRODUCTION_BONUS, 20)
+        self.assertEqual(round(c.JOB_SAFETY_BONUS, 5), 0.01)
+        self.assertEqual(round(c.JOB_TRANSPORT_BONUS, 5), 0.06667)
+        self.assertEqual(round(c.JOB_FREEDOM_BONUS, 5), 0.06667)
+        self.assertEqual(round(c.JOB_STABILITY_BONUS, 5), 0.02)
+
+        self.assertEqual(c.PERSON_MOVE_DELAY, 120960)
+
         self.assertEqual(c.BUILDING_MASTERY_BONUS, 0.15)
+        self.assertEqual(c.BUILDING_POSITION_RADIUS, 2)
         self.assertEqual(c.BUILDING_FULL_DESTRUCTION_TIME, 2*7*24)
         self.assertTrue(0.0029 < c.BUILDING_AMORTIZATION_SPEED < 0.0030)
         self.assertEqual(c.BUILDING_FULL_REPAIR_ENERGY_COST, 168.0)
         self.assertEqual(c.BUILDING_AMORTIZATION_MODIFIER, 1.5)
         self.assertEqual(c.BUILDING_WORKERS_ENERGY_COST, 3)
-        self.assertEqual(c.BUILDING_PERSON_POWER_MULTIPLIER, 1.1)
+        self.assertEqual(c.BUILDING_PERSON_POWER_BONUS, 0.25)
         self.assertEqual(c.BUILDING_TERRAIN_POWER_MULTIPLIER, 0.5)
 
         self.assertEqual(c.CARDS_HELP_COUNT_TO_NEW_CARD, 18)
@@ -361,7 +387,7 @@ class ConstantsTest(testcase.TestCase):
 
 
     def test_energy_regeneration_vs_companion_heal(self):
-        energy_in_day = c._ANGEL_ENERGY_IN_DAY
+        energy_in_day = c.ANGEL_ENERGY_IN_DAY
 
         health_in_day = c.COMPANIONS_WOUNDS_IN_HOUR_FROM_WOUNDS * c.COMPANIONS_DAMAGE_PER_WOUND * 24
 

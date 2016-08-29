@@ -18,11 +18,11 @@ class RISK_LEVEL(DjangoEnum):
     reward_modifier = Column()
     description = Column()
 
-    records = ( ('VERY_HIGH', 0, u'очень высокий', 0.70, 1.30,  2.0, 1.30, u'больше опыта и наград за задания, +200% влияния'),
-                ('HIGH',      1, u'высокий',       0.85, 1.15,  1.0, 1.15, u'немного больше опыта и наград за задания, +100% влияния'),
-                ('NORMAL',    2, u'обычный',       1.00, 1.00,  0.0, 1.00, u'никакого влияния на опыт, награды и влиение героя'),
-                ('LOW',       3, u'низкий',        1.15, 0.85, -1.0, 0.85, u'немного меньше опыта и наград за задания, -100% влияния'),
-                ('VERY_LOW',  4, u'очень низкий',  1.30, 0.70, -2.0, 0.70, u'меньше опыта и наград за задания, -200% влияния') )
+    records = ( ('VERY_HIGH', 0, u'очень высокий', 0.70, 1.30,  2.0,  2.00, u'больше опыта и наград за задания, +200% к влиянию и денежным наградам за задания'),
+                ('HIGH',      1, u'высокий',       0.85, 1.15,  1.0,  1.00, u'немного больше опыта и наград за задания, +100% к влиянию и денежным наградам за задания'),
+                ('NORMAL',    2, u'обычный',       1.00, 1.00,  0.0,  0.00, u'никакого влияния на опыт, награды и влияние героя'),
+                ('LOW',       3, u'низкий',        1.15, 0.85, -1.0, -1.00, u'немного меньше опыта и наград за задания, -100% к влиянию и денежным наградам за задания'),
+                ('VERY_LOW',  4, u'очень низкий',  1.30, 0.70, -2.0, -2.00, u'меньше опыта и наград за задания, -200% к влиянию и денежным наградам за задания') )
 
 
 
@@ -36,7 +36,7 @@ class PREFERENCE_TYPE(DjangoEnum):
                 ('PLACE', 1, u'родной город', 4, 'place', '_prepair_place', True),
                 ('FRIEND', 2, u'соратник', 12, 'friend', '_prepair_person', True),
                 ('ENEMY', 3, u'противник', 20, 'enemy', '_prepair_person', True),
-                ('ENERGY_REGENERATION_TYPE', 4, u'религиозность', 1, 'energy_regeneration_type', '_prepair_value', False),
+                ('ENERGY_REGENERATION_TYPE', 4, u'религиозность', 1, 'energy_regeneration_type', '_prepair_energy_regeneration', False),
                 ('EQUIPMENT_SLOT', 5, u'экипировка', 36, 'equipment_slot', '_prepair_equipment_slot', True),
                 ('RISK_LEVEL', 6, u'уровень риска', 32, 'risk_level', '_prepair_risk_level', False),
                 ('FAVORITE_ITEM', 7, u'любимая вещь', 28, 'favorite_item', '_prepair_equipment_slot', True),
@@ -74,6 +74,7 @@ class MONEY_SOURCE(DjangoEnum):
                 ('EARNED_FROM_HELP', 3, u'получено от хранителя'),
                 ('EARNED_FROM_HABITS', 4, u'получено от черт'),
                 ('EARNED_FROM_COMPANIONS', 5, u'получено от спутников'),
+                ('EARNED_FROM_MASTERS', 6, u'получено от мастеров'),
 
                 ('SPEND_FOR_HEAL', 1000, u'потрачено на лечение'),
                 ('SPEND_FOR_ARTIFACTS', 1001, u'потрачено на покупку артефактов'),
@@ -95,21 +96,21 @@ class ITEMS_OF_EXPENDITURE(DjangoEnum):
     description = Column()
 
     records = ( ('INSTANT_HEAL',        0, u'лечение',           'heal',       20, 0.3, MONEY_SOURCE.SPEND_FOR_HEAL,
-                 u'Собирает деньги, чтобы поправить здоровье, когда понадобится.'),
-                ('BUYING_ARTIFACT',     1, u'покупка артефакта', 'artifact',   4,  1.5, MONEY_SOURCE.SPEND_FOR_ARTIFACTS,
+                 u'Собирает деньги, чтобы поправить здоровье, если понадобится.'),
+                ('BUYING_ARTIFACT',     1, u'покупка артефакта', 'artifact',   4,  3.0, MONEY_SOURCE.SPEND_FOR_ARTIFACTS,
                  u'Планирует приобретение новой экипировки.'),
                 ('SHARPENING_ARTIFACT', 2, u'заточка артефакта', 'sharpening', 3,  2.0, MONEY_SOURCE.SPEND_FOR_SHARPENING,
                  u'Собирает на улучшение экипировки.'),
-                ('USELESS',             3, u'бесполезные траты', 'useless',    7,  0.4, MONEY_SOURCE.SPEND_FOR_USELESS,
+                ('USELESS',             3, u'на себя', 'useless',    7,  0.4, MONEY_SOURCE.SPEND_FOR_USELESS,
                  u'Копит золото для не очень полезных но безусловно необходимых трат.'),
-                ('IMPACT',              4, u'изменение влияния', 'impact',     4,  2.0, MONEY_SOURCE.SPEND_FOR_IMPACT,
+                ('IMPACT',              4, u'изменение влияния', 'impact',     4,  1.0, MONEY_SOURCE.SPEND_FOR_IMPACT,
                  u'Планирует накопить деньжат, чтобы повлиять на «запомнившегося» горожанина.'),
-                ('EXPERIENCE',          5, u'обучение',          'experience', 2,  5.0, MONEY_SOURCE.SPEND_FOR_EXPERIENCE,
+                ('EXPERIENCE',          5, u'обучение',          'experience', 2,  4.0, MONEY_SOURCE.SPEND_FOR_EXPERIENCE,
                  u'Копит деньги в надежде немного повысить свою грамотность.'),
-                ('REPAIRING_ARTIFACT',  6, u'починка артефакта', 'repairing', 15, 1.0, MONEY_SOURCE.SPEND_FOR_REPAIRING,
+                ('REPAIRING_ARTIFACT',  6, u'починка артефакта', 'repairing', 15, 1.5, MONEY_SOURCE.SPEND_FOR_REPAIRING,
                  u'Копит на починку экипировки'),
                 ('HEAL_COMPANION',  7, u'лечение спутника', 'heal_companion', 10, 0.3, MONEY_SOURCE.SPEND_FOR_COMPANIONS,
-                 u'Копит на лечение спутника')
+                 u'Копит на лечение спутника, если оно понадобится')
               )
 
 
@@ -122,20 +123,24 @@ class ITEMS_OF_EXPENDITURE(DjangoEnum):
 
 class EQUIPMENT_SLOT(DjangoEnum):
     artifact_type = Column(related_name='equipment_slot')
+    default = Column(unique=False, single_type=False)
 
     # records sorted in order in which they must be placed in UI
-    records = ( ('HAND_PRIMARY', 0, u'основная рука', ARTIFACT_TYPE.MAIN_HAND),
-                ('HAND_SECONDARY', 1, u'вспомогательная рука', ARTIFACT_TYPE.OFF_HAND),
-                ('HELMET', 2, u'шлем', ARTIFACT_TYPE.HELMET),
-                ('AMULET', 9, u'амулет', ARTIFACT_TYPE.AMULET),
-                ('SHOULDERS', 3, u'наплечники', ARTIFACT_TYPE.SHOULDERS),
-                ('PLATE', 4, u'доспех', ARTIFACT_TYPE.PLATE),
-                ('GLOVES', 5, u'перчатки', ARTIFACT_TYPE.GLOVES),
-                ('CLOAK', 6, u'плащ', ARTIFACT_TYPE.CLOAK),
-                ('PANTS', 7, u'штаны', ARTIFACT_TYPE.PANTS),
-                ('BOOTS', 8, u'сапоги', ARTIFACT_TYPE.BOOTS),
-                ('RING', 10, u'кольцо', ARTIFACT_TYPE.RING) )
+    records = ( ('HAND_PRIMARY', 0, u'основная рука', ARTIFACT_TYPE.MAIN_HAND, 'default_weapon'),
+                ('HAND_SECONDARY', 1, u'вспомогательная рука', ARTIFACT_TYPE.OFF_HAND, None),
+                ('HELMET', 2, u'шлем', ARTIFACT_TYPE.HELMET, None),
+                ('AMULET', 9, u'амулет', ARTIFACT_TYPE.AMULET, None),
+                ('SHOULDERS', 3, u'наплечники', ARTIFACT_TYPE.SHOULDERS, None),
+                ('PLATE', 4, u'доспех', ARTIFACT_TYPE.PLATE, 'default_plate'),
+                ('GLOVES', 5, u'перчатки', ARTIFACT_TYPE.GLOVES, 'default_gloves'),
+                ('CLOAK', 6, u'плащ', ARTIFACT_TYPE.CLOAK, None),
+                ('PANTS', 7, u'штаны', ARTIFACT_TYPE.PANTS, 'default_pants'),
+                ('BOOTS', 8, u'сапоги', ARTIFACT_TYPE.BOOTS, 'default_boots'),
+                ('RING', 10, u'кольцо', ARTIFACT_TYPE.RING, None) )
 
+    @classmethod
+    def default_uids(cls):
+        return [record.default for record in cls.records if record.default is not None]
 
 
 class MODIFIERS(DjangoEnum):
@@ -149,9 +154,9 @@ class MODIFIERS(DjangoEnum):
                 ('EXPERIENCE', 5, u'опыт', lambda: 1.0),
                 ('MAX_BAG_SIZE', 6, u'максимальный размер рюкзака', lambda: 0),
                 ('POWER', 7, u'влияние героя', lambda: 0.0),
-                ('QUEST_MONEY_REWARD', 8, u'денежная награда за выполнение задения', lambda: 1.0),
-                ('BUY_PRICE', 9, u'цена покупки', lambda: 1.0),
-                ('SELL_PRICE', 10, u'цена продажи', lambda: 1.0),
+                ('QUEST_MONEY_REWARD', 8, u'денежная награда за выполнение задения', lambda: 0.0),
+                ('BUY_PRICE', 9, u'цена покупки', lambda: 0.0),
+                ('SELL_PRICE', 10, u'цена продажи', lambda: 0.0),
                 ('ITEMS_OF_EXPENDITURE_PRIORITIES', 11, u'приортет трат', lambda: {record:record.priority for record in ITEMS_OF_EXPENDITURE.records}),
                 ('GET_ARTIFACT_FOR_QUEST', 12, u'получить артефакты за задания', lambda: c.ARTIFACT_FOR_QUEST_PROBABILITY),
                 # ('BUY_BETTER_ARTIFACT', 13, u'купить лучший артефакт', lambda: 0),
@@ -224,6 +229,8 @@ class MODIFIERS(DjangoEnum):
                 ('COMPANION_LIVING_COHERENCE_SPEED', 80, u'скорость развития живого спутника', lambda: 1.0),
                 ('COMPANION_CONSTRUCT_COHERENCE_SPEED', 81, u'скорость развития конструкта', lambda: 1.0),
                 ('COMPANION_UNUSUAL_COHERENCE_SPEED', 82, u'скорость развития особого спутника', lambda: 1.0),
+
+                ('CHARACTER_QUEST_PRIORITY', 83, u'приоритет заданий связанных с героем', lambda: 1.0),
                 )
 
 
@@ -258,4 +265,26 @@ class HABIT_CHANGE_SOURCE(DjangoEnum):
                 ('COMPANION_PEACEFULL_NEUTRAL_2', 18, u'спутник склоняет к нейтральной агрессивности 2', None, None, False, 0.0, c.HABITS_HELP_ABILITY_DELTA),
                 ('COMPANION_PEACEFULL', 19, u'спутник склоняет к миролюбию',                             None, None, None,  0.0, c.HABITS_HELP_ABILITY_DELTA),
 
-                 )
+                ('MASTER_QUEST_HONORABLE', 20, u'бонус от мастера к чести', QUEST_OPTION_MARKERS.HONORABLE,            None, None, c.HABITS_QUEST_PASSIVE_DELTA, 0.0),
+                ('MASTER_QUEST_DISHONORABLE', 21, u'бонус от мастера к бесчестью', QUEST_OPTION_MARKERS.DISHONORABLE,  None, None, -c.HABITS_QUEST_PASSIVE_DELTA, 0.0),
+                ('MASTER_QUEST_AGGRESSIVE', 22, u'бонус от мастера к аггресивности', QUEST_OPTION_MARKERS.AGGRESSIVE,  None, None, 0.0, -c.HABITS_QUEST_PASSIVE_DELTA),
+                ('MASTER_QUEST_UNAGGRESSIVE', 23, u'бонус от мастера к миролюбию', QUEST_OPTION_MARKERS.UNAGGRESSIVE,  None, None, 0.0, c.HABITS_QUEST_PASSIVE_DELTA),
+              )
+
+
+class ENERGY_REGENERATION(DjangoEnum):
+    delay = Column(unique=False)
+    period = Column(unique=False)
+    amount = Column(unique=False)
+    length = Column(unique=False)
+    linguistics_slugs = Column()
+
+    _PERIOD = c.ANGEL_ENERGY_REGENERATION_PERIOD
+    _AMOUNT = c.ANGEL_ENERGY_REGENERATION_AMAUNT
+    _LENGTH = c.ANGEL_ENERGY_REGENERATION_LENGTH
+
+    records = ( ('PRAY', 0, u'молитва',               1, 1 * _PERIOD, 1 * _AMOUNT, 1 * _LENGTH, ('pray', )),
+                ('SACRIFICE', 1, u'жертвоприношение', 2, 2 * _PERIOD, 2 * _AMOUNT, 2 * _LENGTH, ('sacrifice_fire', 'sacrifice_blood', 'sacrifice_knife')),
+                ('INCENSE', 2, u'благовония',         4, 4 * _PERIOD, 4 * _AMOUNT, 4 * _LENGTH, ('incense', )),
+                ('SYMBOLS', 3, u'символы',            3, 3 * _PERIOD, 3 * _AMOUNT, 3 * _LENGTH, ('symbols_stone', 'symbols_ground', 'symbols_tree')),
+                ('MEDITATION', 4, u'медитация',       2, 2 * _PERIOD, 2 * _AMOUNT, 2 * _LENGTH, ('meditation', )) )

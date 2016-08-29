@@ -1,8 +1,9 @@
 # coding: utf-8
 import time
+import logging
 
 from django.conf import settings as project_settings
-from django.utils.log import getLogger
+
 
 from dext.common.utils.decorators import retry_on_exception
 from dext.common.utils.urls import url
@@ -15,7 +16,6 @@ from questgen import analysers
 from questgen.knowledge_base import KnowledgeBase
 from questgen.selectors import Selector
 from questgen.quests.quests_base import QuestsBase
-from questgen.relations import PLACE_TYPE as QUEST_PLACE_TYPE
 
 from the_tale import amqp_environment
 
@@ -25,20 +25,19 @@ from the_tale.game.balance import constants as c
 
 from the_tale.game.mobs import storage as mobs_storage
 
-from the_tale.game.map.places.storage import places_storage
-from the_tale.game.map.roads.storage import waymarks_storage
+from the_tale.game.places import storage as places_storage
+from the_tale.game.roads.storage import waymarks_storage
 
 from the_tale.game.heroes import relations as heroes_relations
 
 from the_tale.game.persons import storage as persons_storage
-from the_tale.game.persons.relations import PERSON_STATE
 
 from the_tale.game.quests.conf import quests_settings
 from the_tale.game.quests.prototypes import QuestPrototype
 from the_tale.game.quests import uids
 from the_tale.game.quests import relations
 
-QUESTS_LOGGER = getLogger('the-tale.game.quests')
+QUESTS_LOGGER = logging.getLogger('the-tale.game.quests')
 
 WORLD_RESTRICTIONS = [restrictions.SingleLocationForObject(),
                       restrictions.ReferencesIntegrity()]
@@ -152,7 +151,7 @@ def fact_place(place):
     return facts.Place(uid=uids.place(place.id),
                        terrains=[terrain.value for terrain in place.terrains],
                        externals={'id': place.id},
-                       type=place.modifier.TYPE.quest_type if place.modifier else QUEST_PLACE_TYPE.NONE)
+                       type=place._modifier.quest_type)
 
 def fact_mob(mob):
     return facts.Mob(uid=uids.mob(mob.id),
@@ -176,23 +175,23 @@ def fill_places_for_first_quest(kb, hero_info):
     best_distance = c.QUEST_AREA_MAXIMUM_RADIUS
     best_destination = None
 
-    for place in places_storage.all():
+    for place in places_storage.places.all():
         if place.id == hero_info.position_place_id:
             continue
-        path_length = waymarks_storage.look_for_road(places_storage[hero_info.position_place_id], place).length
+        path_length = waymarks_storage.look_for_road(places_storage.places[hero_info.position_place_id], place).length
         if path_length < best_distance:
             best_distance = path_length
             best_destination = place
 
     kb += fact_place(best_destination)
-    kb += fact_place(places_storage[hero_info.position_place_id])
+    kb += fact_place(places_storage.places[hero_info.position_place_id])
 
 
 def fill_places(kb, hero_info, max_distance):
     places = []
 
-    for place in places_storage.all():
-        path_length = waymarks_storage.look_for_road(places_storage[hero_info.position_place_id], place).length
+    for place in places_storage.places.all():
+        path_length = waymarks_storage.look_for_road(places_storage.places[hero_info.position_place_id], place).length
 
         if path_length > max_distance:
             continue
@@ -234,7 +233,7 @@ def setup_places(kb, hero_info):
 
     hero_position_uid = uids.place(hero_info.position_place_id)
     if hero_position_uid not in kb:
-        kb += fact_place(places_storage[hero_info.position_place_id])
+        kb += fact_place(places_storage.places[hero_info.position_place_id])
 
     kb += facts.LocatedIn(object=uids.hero(hero_info.id), place=hero_position_uid)
 
@@ -243,7 +242,7 @@ def setup_places(kb, hero_info):
 
 
 def setup_persons(kb, hero_info):
-    for person in persons_storage.persons_storage.filter(state=PERSON_STATE.IN_GAME):
+    for person in persons_storage.persons.all():
         place_uid = uids.place(person.place.id)
 
         if place_uid not in kb:
@@ -258,7 +257,7 @@ def setup_social_connections(kb):
     persons_in_kb = {f_person.externals['id']: f_person.uid for f_person in kb.filter(facts.Person)}
 
     for person_id, person_uid in persons_in_kb.iteritems():
-        person = persons_storage.persons_storage[person_id]
+        person = persons_storage.persons[person_id]
 
         for connection_type, connected_person_id in persons_storage.social_connections.get_person_connections(person):
             if connected_person_id not in persons_in_kb:
@@ -276,13 +275,13 @@ def setup_preferences(kb, hero_info):
         kb += facts.PreferenceMob(object=hero_uid, mob=f_mob.uid)
 
     if hero_info.preferences_place_id is not None:
-        f_place = fact_place(places_storage[hero_info.preferences_place_id])
+        f_place = fact_place(places_storage.places[hero_info.preferences_place_id])
         if f_place.uid not in kb:
             kb += f_place
         kb += facts.PreferenceHometown(object=hero_uid, place=f_place.uid)
 
     if hero_info.preferences_friend_id is not None:
-        friend = persons_storage.persons_storage[hero_info.preferences_friend_id]
+        friend = persons_storage.persons[hero_info.preferences_friend_id]
 
         f_place = fact_place(friend.place)
         f_person = fact_person(friend)
@@ -297,7 +296,7 @@ def setup_preferences(kb, hero_info):
         kb += facts.ExceptBadBranches(object=f_person.uid)
 
     if hero_info.preferences_enemy_id:
-        enemy = persons_storage.persons_storage[hero_info.preferences_enemy_id]
+        enemy = persons_storage.persons[hero_info.preferences_enemy_id]
 
         f_place = fact_place(enemy.place)
         f_person = fact_person(enemy)
@@ -331,7 +330,7 @@ def get_knowledge_base(hero_info, without_restrictions=False): # pylint: disable
 
     if not without_restrictions:
 
-        for person in persons_storage.persons_storage.filter(state=PERSON_STATE.IN_GAME):
+        for person in persons_storage.persons.all():
             if person.place.id == hero_info.position_place_id and person.id in hero_info.interfered_persons:
                 kb += facts.NotFirstInitiator(person=uids.person(person.id))
 

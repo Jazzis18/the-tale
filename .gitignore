@@ -1,6 +1,8 @@
 *~
 *.pyc
 *.egg-info
+*.iml
+.idea
 dist
 dcont
 checkers/pylint.html

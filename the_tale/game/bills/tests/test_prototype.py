@@ -14,7 +14,8 @@ from the_tale.game import names
 from the_tale.game.prototypes import TimePrototype
 from the_tale.game.balance import constants as c
 
-from the_tale.game.heroes.prototypes import HeroPrototype
+from the_tale.game.heroes import logic as heroes_logic
+
 
 from the_tale.game.bills.models import Actor
 from the_tale.game.bills import relations
@@ -24,7 +25,7 @@ from the_tale.game.bills.conf import bills_settings
 from the_tale.game.bills import exceptions
 from the_tale.game.bills.tests.helpers import BaseTestPrototypes
 
-from the_tale.game.map.places.storage import places_storage
+from the_tale.game.places import storage as places_storage
 
 
 class BillPrototypeTests(BaseTestPrototypes):
@@ -32,7 +33,7 @@ class BillPrototypeTests(BaseTestPrototypes):
     def setUp(self):
         super(BillPrototypeTests, self).setUp()
 
-        self.hero = HeroPrototype.get_by_account_id(self.account2.id)
+        self.hero = heroes_logic.load_hero(account_id=self.account2.id)
 
 
     def create_bill(self, account=None):
@@ -64,25 +65,25 @@ class BillPrototypeTests(BaseTestPrototypes):
 
         self.assertTrue(BillPrototype.is_active_bills_limit_reached(self.account1))
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', False)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', False)
     def test_can_vote__places_restrictions__no_places(self):
         bill = self.create_bill()
         with mock.patch('the_tale.game.bills.bills.place_renaming.PlaceRenaming.actors', []):
             self.assertTrue(bill.can_vote(self.hero))
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', False)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', False)
     def test_can_vote__places_restrictions__no_allowed_places(self):
         bill = self.create_bill()
         with mock.patch('the_tale.game.bills.bills.place_renaming.PlaceRenaming.actors', [self.place1, self.place2, self.place3]):
             self.assertFalse(bill.can_vote(self.hero))
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', True)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', True)
     def test_can_vote__places_restrictions__no_allowed_places__with_timeout(self):
         bill = self.create_bill()
         with mock.patch('the_tale.game.bills.bills.place_renaming.PlaceRenaming.actors', [self.place1, self.place2, self.place3]):
             self.assertTrue(bill.can_vote(self.hero))
 
-    @mock.patch('the_tale.game.map.places.prototypes.PlacePrototype.is_new', False)
+    @mock.patch('the_tale.game.places.objects.Place.is_new', False)
     def test_can_vote__places_restrictions__allowed_place(self):
         bill = self.create_bill()
 
@@ -105,8 +106,8 @@ class TestPrototypeApply(BaseTestPrototypes):
         self.bill.save()
 
     def check_place(self, place_id, name, name_forms):
-        self.assertEqual(places_storage[place_id].name, name)
-        self.assertEqual(places_storage[place_id].utg_name.forms, name_forms)
+        self.assertEqual(places_storage.places[place_id].name, name)
+        self.assertEqual(places_storage.places[place_id].utg_name.forms, name_forms)
 
 
     @mock.patch('the_tale.game.bills.prototypes.BillPrototype.time_before_voting_end', lambda x: datetime.timedelta(seconds=0))
@@ -115,7 +116,7 @@ class TestPrototypeApply(BaseTestPrototypes):
         self.bill.save()
         self.assertRaises(exceptions.ApplyBillInWrongStateError, self.bill.apply)
 
-        places_storage.sync(force=True)
+        places_storage.places.sync(force=True)
 
         self.check_place(self.place1.id, self.place1.name, self.place1.utg_name.forms)
 
@@ -126,7 +127,7 @@ class TestPrototypeApply(BaseTestPrototypes):
 
         self.assertRaises(exceptions.ApplyUnapprovedBillError, self.bill.apply)
 
-        places_storage.sync(force=True)
+        places_storage.places.sync(force=True)
 
         self.assertEqual(self.bill.applyed_at_turn, None)
 
@@ -134,7 +135,7 @@ class TestPrototypeApply(BaseTestPrototypes):
 
     def test_wrong_time(self):
         self.assertRaises(exceptions.ApplyBillBeforeVoteWasEndedError, self.bill.apply)
-        places_storage.sync(force=True)
+        places_storage.places.sync(force=True)
         self.check_place(self.place1.id, self.place1.name, self.place1.utg_name.forms)
 
     @mock.patch('the_tale.game.bills.conf.bills_settings.MIN_VOTES_PERCENT', 0.51)
@@ -150,21 +151,21 @@ class TestPrototypeApply(BaseTestPrototypes):
 
         self.assertEqual(Post.objects.all().count(), 1)
 
-        with mock.patch('the_tale.accounts.workers.accounts_manager.Worker.cmd_run_account_method') as cmd_run_account_method:
-            self.assertFalse(self.bill.apply())
+        with self.check_not_changed(lambda: self.place1.attrs.stability):
+            with mock.patch('the_tale.accounts.workers.accounts_manager.Worker.cmd_run_account_method') as cmd_run_account_method:
+                self.assertFalse(self.bill.apply())
 
-        self.assertEqual(cmd_run_account_method.call_count, 0)
-        self.assertTrue(self.bill.state.is_REJECTED)
+            self.assertEqual(cmd_run_account_method.call_count, 0)
+            self.assertTrue(self.bill.state.is_REJECTED)
 
-        self.assertEqual(Post.objects.all().count(), 2)
+            self.assertEqual(Post.objects.all().count(), 2)
 
-        bill = BillPrototype.get_by_id(self.bill.id)
-        self.assertTrue(bill.state.is_REJECTED)
+            bill = BillPrototype.get_by_id(self.bill.id)
+            self.assertTrue(bill.state.is_REJECTED)
 
-        places_storage.sync(force=True)
+            places_storage.places.sync(force=True)
 
-        self.place1.sync_parameters()
-        self.assertEqual(self.place1.stability, 1.0)
+            self.place1.refresh_attributes()
 
         self.assertEqual(bill.applyed_at_turn, current_time.turn_number)
 
@@ -208,10 +209,10 @@ class TestPrototypeApply(BaseTestPrototypes):
         bill = BillPrototype.get_by_id(self.bill.id)
         self.assertTrue(bill.state.is_ACCEPTED)
 
-        places_storage.sync(force=True)
+        places_storage.places.sync(force=True)
 
-        self.place1.sync_parameters()
-        self.assertTrue(self.place1.stability < 1.0)
+        self.place1.refresh_attributes()
+        self.assertTrue(self.place1.attrs.stability < 1.0)
 
         self.assertEqual(bill.applyed_at_turn, current_time.turn_number)
 
@@ -243,6 +244,28 @@ class TestPrototypeApply(BaseTestPrototypes):
                                                                         old_value=0,
                                                                         new_value=1)])
 
+
+class TestPrototypeStop(BaseTestPrototypes):
+
+    def setUp(self):
+        super(TestPrototypeStop, self).setUp()
+
+        bill_data = PlaceRenaming(place_id=self.place1.id, name_forms=names.generator.get_test_name('new_name_1'))
+        self.bill = BillPrototype.create(self.account1, 'bill-1-caption', 'bill-1-rationale', bill_data, chronicle_on_accepted='chronicle-on-accepted')
+
+        self.bill.approved_by_moderator = True
+        self.bill.save()
+
+    def test_wrong_state(self):
+        self.bill.state = relations.BILL_STATE.ACCEPTED
+        self.bill.save()
+        self.assertRaises(exceptions.StopBillInWrongStateError, self.bill.stop)
+
+    def test_stopped(self):
+        with self.check_delta(Post.objects.all().count, 1):
+            self.bill.stop()
+
+        self.assertTrue(self.bill.state.is_STOPPED)
 
 
 
@@ -304,7 +327,7 @@ class GetApplicableBillsTest(BaseTestPrototypes):
         self.bill_3.reload()
 
     def test_all(self):
-        self.assertEqual(set(bill.id for bill in BillPrototype.get_applicable_bills()),
+        self.assertEqual(set(BillPrototype.get_applicable_bills_ids()),
                          set((self.bill_1.id, self.bill_2.id, self.bill_3.id)))
 
     def test_wrong_state(self):
@@ -314,19 +337,19 @@ class GetApplicableBillsTest(BaseTestPrototypes):
                 continue
             self.bill_1.state = state
             self.bill_1.save()
-            self.assertEqual(set(bill.id for bill in BillPrototype.get_applicable_bills()), set((self.bill_2.id, self.bill_3.id)))
+            self.assertEqual(set(BillPrototype.get_applicable_bills_ids()), set((self.bill_2.id, self.bill_3.id)))
 
     def test_approved_by_moderator(self):
 
         self.bill_2.approved_by_moderator = False
         self.bill_2.save()
-        self.assertEqual(set(bill.id for bill in BillPrototype.get_applicable_bills()), set((self.bill_1.id, self.bill_3.id)))
+        self.assertEqual(set(BillPrototype.get_applicable_bills_ids()), set((self.bill_1.id, self.bill_3.id)))
 
     def test_voting_not_ended(self):
 
         self.bill_3._model.updated_at = datetime.datetime.now()
         self.bill_3.save()
-        self.assertEqual(set(bill.id for bill in BillPrototype.get_applicable_bills()), set((self.bill_1.id, self.bill_2.id)))
+        self.assertEqual(set(BillPrototype.get_applicable_bills_ids()), set((self.bill_1.id, self.bill_2.id)))
 
 
 

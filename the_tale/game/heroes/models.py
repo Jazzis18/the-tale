@@ -8,7 +8,6 @@ from dext.common.utils import s11n
 from rels.django import RelationIntegerField
 
 from the_tale.game.relations import GENDER, RACE
-from the_tale.game.balance.enums import ANGEL_ENERGY_REGENERATION_TYPES
 
 from the_tale.game import relations as game_relations
 
@@ -60,7 +59,6 @@ class Hero(models.Model):
 
     abilities = models.TextField(null=False, default='', blank=True)
 
-    places_history = models.TextField(null=False, default='{}')
     cards = models.TextField(null=False, default='{}')
 
     messages = models.TextField(null=False, default='[]')
@@ -68,7 +66,6 @@ class Hero(models.Model):
 
     actions = models.TextField(null=False, default='{}')
 
-    quests = models.TextField(null=False, default='{}')
     quest_created_time = models.DateTimeField(db_index=True, default=datetime.datetime.fromtimestamp(0))
 
     settings_approved = models.BooleanField(null=False, default=True, blank=True)
@@ -110,6 +107,7 @@ class Hero(models.Model):
     stat_money_earned_from_help = models.BigIntegerField(default=0, null=False)
     stat_money_earned_from_habits = models.BigIntegerField(default=0, null=False)
     stat_money_earned_from_companions = models.BigIntegerField(default=0, null=False)
+    stat_money_earned_from_masters = models.BigIntegerField(default=0, null=False)
 
     stat_money_spend_for_heal = models.BigIntegerField(default=0, null=False)
     stat_money_spend_for_artifacts = models.BigIntegerField(default=0, null=False)
@@ -150,7 +148,7 @@ class HeroPreferences(models.Model):
 
     hero = models.ForeignKey(Hero, on_delete=models.CASCADE)
 
-    energy_regeneration_type = models.IntegerField(null=False, default=ANGEL_ENERGY_REGENERATION_TYPES.PRAY, choices=ANGEL_ENERGY_REGENERATION_TYPES._CHOICES, blank=True)
+    energy_regeneration_type = RelationIntegerField(null=False, relation=relations.ENERGY_REGENERATION)
     mob = models.ForeignKey('mobs.MobRecord', null=True, default=None, blank=True, on_delete=models.PROTECT)
     place = models.ForeignKey('places.Place', null=True, default=None, related_name='+', blank=True, on_delete=models.PROTECT)
     friend = models.ForeignKey('persons.Person', null=True, default=None, related_name='+', blank=True, on_delete=models.PROTECT)
@@ -161,3 +159,16 @@ class HeroPreferences(models.Model):
     archetype = RelationIntegerField(relation=game_relations.ARCHETYPE, null=True, default=None, blank=True)
     companion_dedication = RelationIntegerField(relation=relations.COMPANION_DEDICATION, null=True, default=None, blank=True)
     companion_empathy = RelationIntegerField(relation=relations.COMPANION_EMPATHY, null=True, default=None, blank=True)
+
+    @classmethod
+    def create(cls, hero, energy_regeneration_type, risk_level, archetype, companion_dedication, companion_empathy):
+        return cls.objects.create(hero_id=hero.id,
+                                  energy_regeneration_type=energy_regeneration_type,
+                                  risk_level=risk_level,
+                                  archetype=archetype,
+                                  companion_dedication=companion_dedication,
+                                  companion_empathy=companion_empathy)
+
+    @classmethod
+    def update(cls, hero_id, field, value):
+        cls.objects.filter(hero_id=hero_id).update(**{field: value})

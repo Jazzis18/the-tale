@@ -8,6 +8,8 @@ from the_tale.game.mobs.forms import MobRecordForm
 from the_tale.game.mobs import relations
 from the_tale.game.mobs import prototypes
 
+from the_tale.game import relations as game_relations
+
 from the_tale.linguistics.tests import helpers as linguistics_helpers
 
 
@@ -26,9 +28,13 @@ class MobsFormsTests(testcase.TestCase):
                        'global_action_probability': '0.25',
                        'terrains': ['TERRAIN.PLANE_GRASS', 'TERRAIN.HILLS_GRASS'],
                        'abilities': ['hit', 'strong_hit', 'sidestep'],
-                       'type': 'MOB_TYPE.CIVILIZED',
+                       'type': 'BEING_TYPE.CIVILIZED',
                        'archetype': 'ARCHETYPE.NEUTRAL',
-                       'description': mob.description} )
+                       'description': mob.description,
+                       'communication_verbal': game_relations.COMMUNICATION_VERBAL.CAN,
+                       'communication_gestures': game_relations.COMMUNICATION_GESTURES.CAN,
+                       'communication_telepathic': game_relations.COMMUNICATION_TELEPATHIC.CAN,
+                       'intellect_level': game_relations.INTELLECT_LEVEL.NORMAL} )
 
         return data
 
